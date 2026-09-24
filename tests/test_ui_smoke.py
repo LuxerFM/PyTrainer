@@ -12,8 +12,9 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox  # noqa: E402
 
+from curriculum import find_task  # noqa: E402
 from trainer.core.db import Database  # noqa: E402
 from trainer.ui.main_window import MainWindow  # noqa: E402
 from trainer.ui.theme import apply_theme  # noqa: E402
@@ -135,6 +136,66 @@ class UiSmokeTests(unittest.TestCase):
         text = self.window.roadmap_path.read_text(encoding="utf-8")
         self.assertIn("МІСЯЦЬ 1", text)
         self.assertIn("Перший вивід: print()", text)
+
+    # ---------- пошук ----------
+
+    def test_search_filters_the_tree(self):
+        self.window.sidebar.search.setText("SQL")
+        found = self.window.sidebar.tree.filter("SQL")
+        self.assertGreaterEqual(found, 1)
+        self.assertIn("Знайдено задач", self.window.sidebar.search_note.text())
+
+    def test_search_restores_all_tasks_when_cleared(self):
+        self.window.sidebar.search.setText("SQL")
+        total = self.window.sidebar.tree.filter("")
+        self.assertGreaterEqual(total, 60)
+        self.assertFalse(self.window.sidebar.search_note.isVisible())
+
+    # ---------- бейдж сьогоднішньої практики ----------
+
+    def test_today_badge_counts_attempts(self):
+        self.assertIn("Сьогодні: 0", self.window.today_badge.text())
+        self.db.record_attempt("w1-hello", ok=False, with_checks=True)
+        self.window._refresh_stats()
+        self.assertIn("Сьогодні: 1 спроб", self.window.today_badge.text())
+
+    # ---------- розв'язок і експорт ----------
+
+    def test_use_solution_inserts_code_and_lowers_xp(self):
+        original = QMessageBox.question
+        QMessageBox.question = staticmethod(
+            lambda *args, **kwargs: QMessageBox.StandardButton.Yes
+        )
+        try:
+            self.window.open_task("m2-math")
+            solution_text = find_task("m2-math").solution_hint.text
+            self.window._use_solution(solution_text)
+        finally:
+            QMessageBox.question = original
+
+        self.assertIn("import math", self.window.editor.toPlainText())
+        self.assertTrue(self.db.solution_used("m2-math"))
+        self.assertLess(self.window._xp_now(find_task("m2-math")),
+                        find_task("m2-math").base_xp)
+
+    def test_export_solutions_writes_files(self):
+        self.db.mark_solved("w1-hello", 100)
+        self.db.save_code("w1-hello", 'print("Привіт, світ!")')
+
+        empty, original_dialog = QMessageBox.information, QFileDialog.getExistingDirectory
+        QMessageBox.information = staticmethod(lambda *args, **kwargs: None)
+        QFileDialog.getExistingDirectory = staticmethod(lambda *args, **kwargs: self.tmp.name)
+        try:
+            self.window.export_solutions()
+        finally:
+            QMessageBox.information = empty
+            QFileDialog.getExistingDirectory = original_dialog
+
+        exported = Path(self.tmp.name) / "w1-hello.py"
+        self.assertTrue(exported.exists())
+        self.assertIn("Привіт, світ!", exported.read_text(encoding="utf-8"))
+        self.assertIn("w1-hello.py", (Path(self.tmp.name) / "README.md").read_text(
+            encoding="utf-8"))
 
 
 if __name__ == "__main__":

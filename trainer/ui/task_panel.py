@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QPushButton,
     QScrollArea,
     QTabWidget,
     QTextBrowser,
@@ -35,7 +36,8 @@ def _format_time(seconds: float) -> str:
 class TaskPanel(QWidget):
     """Показує умову, результати перевірки, підказки та історію спроб."""
 
-    hint_revealed = Signal(int, bool)  # (рівень підказки, чи це повний розв'язок)
+    hint_revealed = Signal(int, bool)     # (рівень підказки, чи це повний розв'язок)
+    solution_use_requested = Signal(str)  # людина хоче вставити розв'язок у редактор
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -322,10 +324,18 @@ class TaskPanel(QWidget):
         note.setVisible(bool(hint.solution))
         box.addWidget(note)
 
+        use_button = QPushButton("Вставити розв'язок у редактор")
+        use_button.setObjectName("Ghost")
+        use_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        use_button.setVisible(False)
+        use_button.clicked.connect(lambda _=False, h=hint: self.solution_use_requested.emit(h.text))
+        box.addWidget(use_button)
+
         widgets = {
             "button": button,
             "text": text,
             "note": note,
+            "use_button": use_button,
             "hint": hint,
             "index": index,
         }
@@ -361,8 +371,10 @@ class TaskPanel(QWidget):
                     "Розв'язок відкрито після достатньої роботи над задачею. "
                     "Подивись — і спробуй переписати код своїми руками."
                 )
+                widgets["use_button"].setVisible(True)
             else:
                 button.setEnabled(False)
+                widgets["use_button"].setVisible(False)
                 button.setChecked(False)
                 widgets["text"].setVisible(False)
                 button.setText(

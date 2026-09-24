@@ -174,6 +174,14 @@ class Database:
         ).fetchone()
         return bool(row["solution_used"]) if row else False
 
+    def mark_solution_used(self, task_id: str) -> None:
+        """Людина скористалась повним розв'язком (не чіпає лічильник підказок)."""
+        self._ensure(task_id)
+        self.connection.execute(
+            "UPDATE progress SET solution_used = 1 WHERE task_id = ?", (task_id,)
+        )
+        self.connection.commit()
+
     def reveal_hint(self, task_id: str, level: int, is_solution: bool = False) -> None:
         self._ensure(task_id)
         self.connection.execute(

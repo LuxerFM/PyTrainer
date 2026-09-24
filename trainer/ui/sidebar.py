@@ -11,6 +11,7 @@ from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QProgressBar,
     QStackedWidget,
     QToolButton,
@@ -96,6 +97,41 @@ class RoadmapTree(QTreeWidget):
             self.setCurrentItem(item)
             self.scrollToItem(item)
 
+    # ---------- пошук ----------
+
+    def filter(self, query: str) -> int:
+        """Ховає все, що не підходить під пошук. Повертає кількість задач."""
+        query = query.strip().lower()
+        found = 0
+
+        for item in self._items.values():
+            haystack = f"{item.text(0)} {item.toolTip(0)}".lower()
+            match = not query or query in haystack
+            item.setHidden(not match)
+            if match:
+                found += 1
+
+        for month_index in range(self.topLevelItemCount()):
+            month_item = self.topLevelItem(month_index)
+            month_visible = False
+            for topic_index in range(month_item.childCount()):
+                topic_item = month_item.child(topic_index)
+                topic_visible = any(
+                    not topic_item.child(index).isHidden()
+                    for index in range(topic_item.childCount())
+                )
+                topic_item.setHidden(not topic_visible)
+                topic_item.setExpanded(topic_visible)
+                month_visible = month_visible or topic_visible
+            month_item.setHidden(not month_visible)
+            month_item.setExpanded(month_visible)
+
+        if not query:                      # повертаємо звичайний вигляд
+            self.collapseAll()
+            self.expandToDepth(1)
+
+        return found
+
     def _on_clicked(self, item: QTreeWidgetItem) -> None:
         task_id = item.data(0, Qt.ItemDataRole.UserRole)
         if task_id:
@@ -123,7 +159,7 @@ class SideNav(QWidget):
         layout.addWidget(self._build_switch())
 
         self.stack = QStackedWidget()
-        self.stack.addWidget(self.tree)
+        self.stack.addWidget(self._build_roadmap_page())
         self.stack.addWidget(self.reviews)
         self.stack.addWidget(self.stats)
         layout.addWidget(self.stack, 1)
@@ -171,6 +207,34 @@ class SideNav(QWidget):
         row.addWidget(self.percent_label)
         box.addLayout(row)
         return header
+
+    def _build_roadmap_page(self) -> QWidget:
+        page = QWidget()
+        box = QVBoxLayout(page)
+        box.setContentsMargins(10, 10, 10, 6)
+        box.setSpacing(6)
+
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Пошук задачі…")
+        self.search.setClearButtonEnabled(True)
+        self.search.textChanged.connect(self._on_search)
+        box.addWidget(self.search)
+
+        self.search_note = QLabel("")
+        self.search_note.setObjectName("Subtle")
+        self.search_note.setVisible(False)
+        box.addWidget(self.search_note)
+
+        box.addWidget(self.tree, 1)
+        return page
+
+    def _on_search(self, text: str) -> None:
+        found = self.tree.filter(text)
+        if not text.strip():
+            self.search_note.setVisible(False)
+            return
+        self.search_note.setText(f"Знайдено задач: {found}")
+        self.search_note.setVisible(True)
 
     def _build_switch(self) -> QWidget:
         holder = QWidget()

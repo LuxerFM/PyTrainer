@@ -118,6 +118,8 @@ class MainWindow(QMainWindow):
         file_menu = self.menuBar().addMenu("Файл")
         self._add_action(file_menu, "Зберегти код…", "Ctrl+S", self.save_code_as)
         self._add_action(file_menu, "Скинути код до заготовки", None, self.reset_code)
+        self._add_action(file_menu, "Експортувати розв'язані задачі…", None,
+                         self.export_solutions)
         file_menu.addSeparator()
         self._add_action(file_menu, "Оновити Python-Roadmap.md", None, self.rewrite_roadmap)
         file_menu.addSeparator()
@@ -188,9 +190,12 @@ class MainWindow(QMainWindow):
         self.xp_badge.setObjectName("BadgeAccent")
         self.streak_badge = QLabel("Серія: 0 дн.")
         self.streak_badge.setObjectName("Badge")
+        self.today_badge = QLabel("Сьогодні: 0 спроб")
+        self.today_badge.setObjectName("Badge")
         self.review_badge = QLabel("На повторення: 0")
         self.review_badge.setObjectName("Badge")
-        for badge in (self.review_badge, self.xp_badge, self.streak_badge):
+        for badge in (self.today_badge, self.review_badge, self.xp_badge,
+                      self.streak_badge):
             bar.addWidget(badge)
 
     def _build_body(self) -> None:
@@ -285,6 +290,7 @@ class MainWindow(QMainWindow):
     def _connect(self) -> None:
         self.sidebar.task_selected.connect(self.open_task)
         self.panel.hint_revealed.connect(self._on_hint_revealed)
+        self.panel.solution_use_requested.connect(self._use_solution)
         self.editor.run_requested.connect(self.run_code_only)
         self.editor.cursorPositionChanged.connect(self._update_position)
         self.run_finished.connect(self._on_run_finished)
@@ -327,7 +333,7 @@ class MainWindow(QMainWindow):
             topic=topic_of(task.id),
             hints_used=hints_used,
             active_seconds=active,
-            xp_preview=scoring.xp_for(task, hints_used=hints_used, first_time=not solved),
+            xp_preview=self._xp_now(task),
         )
         self._load_history(task.id)
 
@@ -456,8 +462,7 @@ class MainWindow(QMainWindow):
 
         task = self._task
         solved_before = self.db.status(task.id) == "done"
-        hints_used = self.db.hints_used(task.id)
-        xp = scoring.xp_for(task, hints_used=hints_used, first_time=not solved_before)
+        xp = self._xp_now(task)
 
         self.db.record_attempt(
             task.id,
@@ -515,11 +520,44 @@ class MainWindow(QMainWindow):
             return
         self.db.reveal_hint(self._task.id, index, is_solution)
         hints_used = self.db.hints_used(self._task.id)
-        solved = self.db.status(self._task.id) == "done"
-        xp = scoring.xp_for(self._task, hints_used=hints_used, first_time=not solved)
-        self.panel.update_xp_preview(xp, hints_used)
+        self.panel.update_xp_preview(self._xp_now(self._task), hints_used)
+        self._log(f"Підказка {index} — XP за задачу тепер {self._xp_now(self._task)}",
+                  Colors.warn)
+
+    def _use_solution(self, text: str) -> None:
+        """Вставляє розв'язок у редактор — з чесним попередженням про ціну."""
+        if self._task is None:
+            return
+        answer = QMessageBox.question(
+            self, "Вставити розв'язок?",
+            "Код у редакторі буде замінено готовим розв'язком.\n\n"
+            f"XP за цю задачу впаде до {scoring.xp_for(self._task, solution_used=True)},"
+            " а сама задача потрапить у чергу повторень.\n\n"
+            "Усе одно спробуй перебрати його руками — інакше на наступній задачі "
+            "буде так само важко.",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        self.db.mark_solution_used(self._task.id)
+        self.editor.setPlainText(text)
+        self.editor.setFocus()
+        self.panel.update_xp_preview(
+            self._xp_now(self._task), self.db.hints_used(self._task.id)
+        )
         self._log(
-            f"Підказка {index} — XP за задачу тепер {xp}", Colors.warn
+            "Розв'язок вставлено в редактор. Перепиши його своїми руками — "
+            "це і є вправа.",
+            Colors.warn,
+        )
+
+    def _xp_now(self, task) -> int:
+        """Скільки XP дасть задача просто зараз, з усіма штрафами."""
+        return scoring.xp_for(
+            task,
+            hints_used=self.db.hints_used(task.id),
+            first_time=self.db.status(task.id) != "done",
+            solution_used=self.db.solution_used(task.id),
         )
 
     def _tick(self) -> None:
@@ -620,6 +658,71 @@ class MainWindow(QMainWindow):
         self.xp_badge.setText(f"XP {xp}")
         self.streak_badge.setText(
             f"Серія: {streak} дн." if streak != 1 else "Серія: 1 день"
+        )
+        self._update_today_badge(streak)
+
+    def _update_today_badge(self, streak: int) -> None:
+        """Нагадування про сьогоднішню практику — серія днів не чекає."""
+        today = self.db.attempts_per_day(days=1).get(date.today().isoformat(), 0)
+        if today:
+            self.today_badge.setText(f"Сьогодні: {today} спроб ✓")
+            self.today_badge.setStyleSheet(f"color: {Colors.success};")
+            return
+
+        if streak:
+            self.today_badge.setText("Сьогодні: 0 — не втрать серію")
+            self.today_badge.setStyleSheet(f"color: {Colors.warn};")
+        else:
+            self.today_badge.setText("Сьогодні: 0 спроб")
+            self.today_badge.setStyleSheet(f"color: {Colors.muted};")
+
+    def export_solutions(self) -> None:
+        """Складає розв'язані задачі у файли — це вже заготовка портфоліо."""
+        done = [task for task in study_tasks()
+                if self.db.status(task.id) == "done" and self.db.saved_code(task.id)]
+        if not done:
+            QMessageBox.information(
+                self, "Немає що експортувати",
+                "Спершу здай хоча б одну задачу — і її код буде що експортувати.",
+            )
+            return
+
+        folder = QFileDialog.getExistingDirectory(self, "Куди зберегти розв'язані задачі")
+        if not folder:
+            return
+
+        target = Path(folder)
+        index_lines = [
+            "# Мої розв'язані задачі",
+            "",
+            "Код із тренажера PyTrainer. Кожен файл — окрема задача: "
+            "запусти будь-який із них командою `python <файл>`.",
+            "",
+        ]
+        written = 0
+        for task in done:
+            code = self.db.saved_code(task.id)
+            if not code:
+                continue
+            header = (
+                f'"""Задача «{task.title}» ({task.level}) — тренажер PyTrainer."""\n\n'
+            )
+            (target / f"{task.id}.py").write_text(header + code, encoding="utf-8")
+            written += 1
+            index_lines.append(f"- [x] {task.title} — `{task.id}.py`")
+
+        index_lines += [
+            "",
+            f"Здано задач: {written} · XP: {self.db.total_xp()} · "
+            f"серія днів: {self.db.streak()}",
+        ]
+        (target / "README.md").write_text("\n".join(index_lines), encoding="utf-8")
+
+        self.status_msg.setText(f"Експортовано {written} задач у {target.name}")
+        QMessageBox.information(
+            self, "Готово",
+            f"Збережено {written} файлів і README.md у папку:\n{target}\n\n"
+            "Наступний крок із роадмапу — викласти це на GitHub.",
         )
 
     def _load_history(self, task_id: str) -> None:

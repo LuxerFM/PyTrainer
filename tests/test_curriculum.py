@@ -27,6 +27,12 @@ class CurriculumStructureTests(unittest.TestCase):
         ready = [task for task in study_tasks() if task.id.startswith("w")]
         self.assertGreaterEqual(len(ready), 15, "у місяці 1 має бути щонайменше 15 задач")
 
+    def test_month_two_has_enough_tasks(self):
+        ready = [task for task in study_tasks() if task.id.startswith("m2-")]
+        self.assertGreaterEqual(len(ready), 10, "у місяці 2 має бути щонайменше 10 задач")
+        topics = {topic.title for topic in CURRICULUM[1].topics}
+        self.assertIn("Тиждень 8 · Дані: JSON, CSV, SQL", topics)
+
     def test_every_ready_task_is_complete(self):
         for task in study_tasks():
             with self.subTest(task=task.id):
@@ -84,7 +90,7 @@ class RoadmapFileTests(unittest.TestCase):
     def test_render_marks_stubs(self):
         text = roadmap_md.render({}, {})
         self.assertIn("_заплановано_", text)
-        self.assertIn("Git: init, add, commit", text)
+        self.assertIn("Git: перший коміт у своєму проєкті", text)
 
 
 if __name__ == "__main__":

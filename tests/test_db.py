@@ -66,6 +66,11 @@ class DatabaseTests(unittest.TestCase):
         self.db.reveal_hint("w3-greet", 1)
         self.assertEqual(self.db.hints_used("w3-greet"), 2)
 
+    def test_mark_solution_used_does_not_touch_hint_counter(self):
+        self.db.mark_solution_used("m2-sql")
+        self.assertTrue(self.db.solution_used("m2-sql"))
+        self.assertEqual(self.db.hints_used("m2-sql"), 0)
+
     def test_active_seconds_accumulate(self):
         self.db.add_active_seconds("w1-hello", 5)
         self.db.add_active_seconds("w1-hello", 7)

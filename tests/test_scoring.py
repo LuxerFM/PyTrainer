@@ -29,6 +29,14 @@ class XpTests(unittest.TestCase):
         task = find_task("w1-hello")
         self.assertEqual(scoring.xp_for(task, hints_used=0, first_time=False), 30)
 
+    def test_solution_used_counts_as_full_penalty(self):
+        task = find_task("w1-hello")
+        # навіть якщо підказки не розкривали — вставлений розв'язок знижує XP
+        self.assertEqual(scoring.xp_for(task, solution_used=True),
+                         scoring.xp_for(task, hints_used=scoring.SOLUTION_HINT_LEVELS))
+        self.assertLess(scoring.xp_for(task, solution_used=True),
+                        scoring.xp_for(task, hints_used=1))
+
 
 class IntervalTests(unittest.TestCase):
     def test_intervals_grow(self):

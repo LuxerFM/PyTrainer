@@ -226,6 +226,16 @@ QProgressBar::chunk { background-color: $accent; border-radius: 4px; }
 
 QStatusBar { background-color: $panel; border-top: 1px solid $border; color: $muted; }
 QStatusBar::item { border: none; }
+QLineEdit {
+    background-color: $elevated;
+    border: 1px solid $border;
+    border-radius: 8px;
+    padding: 6px 10px;
+    color: $text;
+    selection-background-color: $selection;
+}
+QLineEdit:focus { border-color: $accent; }
+
 QToolButton#NavButton {
     background: transparent;
     border: 1px solid transparent;

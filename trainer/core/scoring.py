@@ -18,6 +18,9 @@ REPEAT_FACTOR = 0.3
 # Розклад повторень у днях: 1 → 3 → 7 → 30 (потім задача вважається засвоєною)
 INTERVALS = (1, 3, 7, 30)
 
+# Скільки «підказок» зараховуємо, якщо людина скористалась повним розв'язком
+SOLUTION_HINT_LEVELS = 3
+
 
 class HasBaseXp(Protocol):
     """Мінімум, який нам потрібен від задачі."""
@@ -25,9 +28,21 @@ class HasBaseXp(Protocol):
     base_xp: int
 
 
-def xp_for(task: HasBaseXp, *, hints_used: int = 0, first_time: bool = True) -> int:
-    """Скільки XP дати за здану задачу."""
-    factor = max(MIN_FACTOR, 1 - HINT_PENALTY * hints_used)
+def xp_for(
+    task: HasBaseXp,
+    *,
+    hints_used: int = 0,
+    first_time: bool = True,
+    solution_used: bool = False,
+) -> int:
+    """Скільки XP дати за здану задачу.
+
+    Якщо людина скористалась повним розв'язком, це рахується як мінімум
+    SOLUTION_HINT_LEVELS підказок — інакше вставлений розв'язок коштував би
+    стільки ж XP, як самостійна робота.
+    """
+    effective = max(hints_used, SOLUTION_HINT_LEVELS) if solution_used else hints_used
+    factor = max(MIN_FACTOR, 1 - HINT_PENALTY * effective)
     if not first_time:
         factor *= REPEAT_FACTOR
     return int(round(task.base_xp * factor / 5) * 5)
