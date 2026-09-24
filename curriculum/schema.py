@@ -82,7 +82,13 @@ class Task:
     minutes: int = DEFAULT_MINUTES
     checks: tuple[Check, ...] = ()
     hints: tuple[Hint, ...] = ()
+    files: dict[str, str] = field(default_factory=dict)   # допоміжні файли проєкту
+    entrypoint: str = "solution.py"                      # який файл запускати
     stub: bool = False           # True — задача ще не написана, тільки позначка в плані
+
+    @property
+    def has_files(self) -> bool:
+        return bool(self.files)
 
     @property
     def base_xp(self) -> int:
@@ -171,7 +177,10 @@ def task(
     minutes: int = DEFAULT_MINUTES,
     checks: list[Check] | None = None,
     hints: list[Hint] | None = None,
+    files: dict[str, str] | None = None,
+    entrypoint: str = "solution.py",
 ) -> Task:
+    """files — додаткові файли проєкту, які з'являться поруч із розв'язком."""
     return Task(
         id=id,
         title=title,
@@ -183,6 +192,8 @@ def task(
         minutes=minutes,
         checks=tuple(checks or ()),
         hints=tuple(hints or ()),
+        files=dict(files or {}),
+        entrypoint=entrypoint,
     )
 
 

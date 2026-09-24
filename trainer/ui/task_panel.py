@@ -36,8 +36,9 @@ def _format_time(seconds: float) -> str:
 class TaskPanel(QWidget):
     """Показує умову, результати перевірки, підказки та історію спроб."""
 
-    hint_revealed = Signal(int, bool)     # (рівень підказки, чи це повний розв'язок)
-    solution_use_requested = Signal(str)  # людина хоче вставити розв'язок у редактор
+    hint_revealed = Signal(int, bool)       # (рівень підказки, чи це повний розв'язок)
+    solution_use_requested = Signal(str)    # людина хоче вставити розв'язок у редактор
+    manual_toggle_requested = Signal(str)   # пункт, зроблений поза тренажером
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -167,24 +168,52 @@ class TaskPanel(QWidget):
         self._refresh_lock_state()
         self.tabs.setCurrentIndex(0)
 
-    def show_placeholder(self, title: str, message: str) -> None:
-        """Задача, якої ще немає (запланована на пізніше)."""
+    def show_placeholder(self, title: str, message: str, *,
+                         task_id: str | None = None, manual_done: bool = False) -> None:
+        """Пункт плану, який робиться поза тренажером (venv, Git, pytest)."""
         self._task = None
         self._hint_widgets.clear()
         self.title.setText(title)
-        self.level_badge.setText("Заплановано")
+        self.level_badge.setText("Виконано поза тренажером" if manual_done else "План")
         self.topic_label.setText("")
-        self.xp_label.setText("")
+        self.xp_label.setText(
+            "Цей пункт не перевіряється тестами: зроби його у своєму терміналі "
+            "й познач галочкою." if task_id else ""
+        )
         self.statement.setHtml(self._wrap_html(f"<p>{message}</p>"))
         self.reset_tests()
         self.history_summary.setText("Історії ще немає")
         self.history_list.clear()
+        self._clear_hints()
+
+        if task_id:
+            self._build_manual_block(task_id, manual_done)
+        self.tabs.setCurrentIndex(0)
+
+    def _clear_hints(self) -> None:
         while self.hints_box.count() > 1:
             item = self.hints_box.takeAt(0)
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
-        self.tabs.setCurrentIndex(0)
+
+    def _build_manual_block(self, task_id: str, done: bool) -> None:
+        self._clear_hints()
+        block = QWidget()
+        box = QVBoxLayout(block)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(6)
+
+        button = QPushButton(
+            "Зняти позначку" if done else "Позначити виконаним"
+        )
+        button.setObjectName("Ghost")
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.clicked.connect(
+            lambda _=False, task=task_id: self.manual_toggle_requested.emit(task)
+        )
+        box.addWidget(button)
+        self.hints_box.insertWidget(self.hints_box.count() - 1, block)
 
     def set_history(self, rows, *, solved: bool, best_xp: int, hints_used: int,
                     active_seconds: float) -> None:
@@ -194,17 +223,23 @@ class TaskPanel(QWidget):
             return
 
         self.history_summary.setText(
-            f"Спроба з перевіркою: {'здано ✓' if solved else 'ще ні'} · "
-            f"найкращий XP: {best_xp} · підказок відкрито: {hints_used} · "
+            f"Задача: {'здано ✓' if solved else 'ще не здана'} · "
+            f"XP: {best_xp} · підказок відкрито: {hints_used} · "
             f"час над задачею: {_format_time(active_seconds)}"
         )
         for row in rows:
-            mark = "✓" if row["ok"] else "✕"
-            kind = "перевірка" if row["with_checks"] else "запуск"
-            xp = f' · +{row["xp"]} XP' if row["xp"] else ""
-            item = QListWidgetItem(f'{row["created_at"][:16].replace("T", " ")} · '
-                                   f"{mark} {kind}{xp}")
-            item.setForeground(QColor(Colors.success if row["ok"] else Colors.error))
+            when = row["created_at"][:16].replace("T", " ")
+            if not row["with_checks"]:
+                # звичайний запуск: не невдача, просто проба коду
+                item = QListWidgetItem(f"{when} · ▸ запуск")
+                item.setForeground(QColor(Colors.muted))
+            else:
+                mark = "✓" if row["ok"] else "✕"
+                xp = f' · +{row["xp"]} XP' if row["xp"] else ""
+                item = QListWidgetItem(f"{when} · {mark} перевірка{xp}")
+                item.setForeground(
+                    QColor(Colors.success if row["ok"] else Colors.error)
+                )
             self.history_list.addItem(item)
 
     def update_xp_preview(self, xp: int, hints_used: int) -> None:

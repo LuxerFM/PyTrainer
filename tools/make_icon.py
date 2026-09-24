@@ -1,0 +1,86 @@
+"""Малює іконку застосунку (assets/icon.png) — щоб не тримати бінарники без джерела.
+
+Іконка генерується кодом, тому її легко перемалювати або підправити:
+
+    .venv\\Scripts\\python.exe tools/make_icon.py
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+TARGET = ROOT / "assets" / "icon.png"
+SIZE = 256
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from PySide6.QtCore import QRectF, Qt  # noqa: E402
+from PySide6.QtGui import (  # noqa: E402
+    QBrush,
+    QColor,
+    QGuiApplication,
+    QImage,
+    QLinearGradient,
+    QPainter,
+    QPainterPath,
+    QPen,
+)
+
+PY_BLUE = "#3776ab"
+PY_BLUE_DARK = "#16324f"
+PY_YELLOW = "#ffd43b"
+PY_LIGHT = "#8ec7f0"
+
+
+def draw() -> QImage:
+    image = QImage(SIZE, SIZE, QImage.Format.Format_ARGB32)
+    image.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+    # тло: заокруглений квадрат із градієнтом
+    background = QPainterPath()
+    background.addRoundedRect(QRectF(10, 10, SIZE - 20, SIZE - 20), 56, 56)
+    gradient = QLinearGradient(0, 0, SIZE, SIZE)
+    gradient.setColorAt(0.0, QColor(PY_BLUE))
+    gradient.setColorAt(1.0, QColor(PY_BLUE_DARK))
+    painter.fillPath(background, QBrush(gradient))
+
+    # дві «змії» — стилізований символ Python
+    pen = QPen(QColor(PY_YELLOW), 24)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    painter.setPen(pen)
+    painter.drawArc(QRectF(58, 54, 140, 130), 190 * 16, 250 * 16)
+
+    pen.setColor(QColor(PY_LIGHT))
+    painter.setPen(pen)
+    painter.drawArc(QRectF(58, 92, 140, 130), 10 * 16, 250 * 16)
+
+    # очі
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(PY_BLUE_DARK))
+    painter.drawEllipse(QRectF(104, 78, 15, 15))
+    painter.setBrush(QColor("#ffffff"))
+    painter.drawEllipse(QRectF(139, 165, 15, 15))
+
+    painter.end()
+    return image
+
+
+def main() -> int:
+    QGuiApplication(sys.argv)
+    TARGET.parent.mkdir(parents=True, exist_ok=True)
+    image = draw()
+    if not image.save(str(TARGET), "PNG"):
+        print("Не вдалося зберегти іконку")
+        return 1
+    print(f"Іконку збережено: {TARGET} ({image.width()}×{image.height()})")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

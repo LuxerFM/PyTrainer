@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS progress (
     hints_used     INTEGER NOT NULL DEFAULT 0,
     solution_used  INTEGER NOT NULL DEFAULT 0,
     active_seconds REAL NOT NULL DEFAULT 0,
+    bonus_xp       INTEGER NOT NULL DEFAULT 0,
     code           TEXT
 );
 
@@ -82,6 +83,10 @@ class Database:
         }
         if "code" not in columns:
             self.connection.execute("ALTER TABLE progress ADD COLUMN code TEXT")
+        if "bonus_xp" not in columns:
+            self.connection.execute(
+                "ALTER TABLE progress ADD COLUMN bonus_xp INTEGER NOT NULL DEFAULT 0"
+            )
 
     def close(self) -> None:
         self.connection.close()
@@ -141,6 +146,21 @@ class Database:
             (xp, task_id),
         )
         self.connection.commit()
+
+    def add_bonus_xp(self, task_id: str, xp: int) -> None:
+        """XP за повторення — окремо від best_xp, щоб його не «з'їдав» MAX()."""
+        self._ensure(task_id)
+        self.connection.execute(
+            "UPDATE progress SET bonus_xp = bonus_xp + ? WHERE task_id = ?",
+            (xp, task_id),
+        )
+        self.connection.commit()
+
+    def bonus_xp(self, task_id: str) -> int:
+        row = self.connection.execute(
+            "SELECT bonus_xp FROM progress WHERE task_id = ?", (task_id,)
+        ).fetchone()
+        return int(row["bonus_xp"]) if row else 0
 
     def best_xp(self, task_id: str) -> int:
         row = self.connection.execute(
@@ -324,9 +344,15 @@ class Database:
 
     def total_xp(self) -> int:
         row = self.connection.execute(
-            "SELECT COALESCE(SUM(best_xp), 0) AS total FROM progress"
+            "SELECT COALESCE(SUM(best_xp + bonus_xp), 0) AS total FROM progress"
         ).fetchone()
         return int(row["total"])
+
+    def total_active_seconds(self) -> float:
+        row = self.connection.execute(
+            "SELECT COALESCE(SUM(active_seconds), 0) AS total FROM progress"
+        ).fetchone()
+        return float(row["total"])
 
     def activity_days(self, limit: int = 120) -> list[str]:
         rows = self.connection.execute(
@@ -353,14 +379,18 @@ class Database:
         return {row["day"]: int(row["total"]) for row in rows}
 
     def task_results(self) -> list[sqlite3.Row]:
-        """Зведення по задачах: спроби, успіхи, XP — для статистики тем."""
+        """Зведення по задачах: спроби, успіхи, XP, черга повторень."""
         return list(
             self.connection.execute(
                 """
                 SELECT p.task_id,
                        p.status,
                        p.best_xp,
+                       p.bonus_xp,
                        p.hints_used,
+                       p.solution_used,
+                       r.due_date,
+                       r.interval_index,
                        COALESCE(a.total, 0)  AS attempts,
                        COALESCE(a.passes, 0) AS passes
                   FROM progress AS p
@@ -372,9 +402,75 @@ class Database:
                         WHERE with_checks = 1
                         GROUP BY task_id
                   ) AS a ON a.task_id = p.task_id
+                  LEFT JOIN reviews AS r ON r.task_id = p.task_id
                 """
             )
         )
+
+    # ------------------------------------------------------------------
+    # перенесення прогресу (файл progress.json)
+    # ------------------------------------------------------------------
+
+    PROGRESS_FIELDS = (
+        "task_id", "status", "solved_at", "best_xp", "bonus_xp",
+        "hints_used", "solution_used", "active_seconds",
+    )
+
+    def snapshot(self) -> dict:
+        """Стан прогресу у вигляді словника — його можна зберегти у файл."""
+        fields = ", ".join(self.PROGRESS_FIELDS)
+        return {
+            "version": 1,
+            "saved_at": _now(),
+            "progress": [
+                dict(row)
+                for row in self.connection.execute(
+                    f"SELECT {fields} FROM progress WHERE status != 'todo'"
+                )
+            ],
+            "reviews": [
+                dict(row)
+                for row in self.connection.execute(
+                    "SELECT task_id, due_date, interval_index, last_result FROM reviews"
+                )
+            ],
+        }
+
+    def restore(self, data: dict) -> int:
+        """Відновлює прогрес зі словника. Повертає кількість відновлених задач."""
+        restored = 0
+        for row in data.get("progress", []):
+            self._ensure(row["task_id"])
+            self.connection.execute(
+                """
+                UPDATE progress
+                   SET status = ?, solved_at = ?, best_xp = ?, bonus_xp = ?,
+                       hints_used = ?, solution_used = ?, active_seconds = ?
+                 WHERE task_id = ?
+                """,
+                (
+                    row.get("status", "todo"), row.get("solved_at"),
+                    int(row.get("best_xp") or 0), int(row.get("bonus_xp") or 0),
+                    int(row.get("hints_used") or 0), int(row.get("solution_used") or 0),
+                    float(row.get("active_seconds") or 0), row["task_id"],
+                ),
+            )
+            restored += 1
+
+        for row in data.get("reviews", []):
+            self.connection.execute(
+                """
+                INSERT INTO reviews (task_id, due_date, interval_index, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(task_id) DO UPDATE SET
+                    due_date = excluded.due_date,
+                    interval_index = excluded.interval_index,
+                    updated_at = excluded.updated_at
+                """,
+                (row["task_id"], row["due_date"], int(row.get("interval_index") or 0), _now()),
+            )
+        self.connection.commit()
+        return restored
 
     def reset_task(self, task_id: str) -> None:
         """Повністю прибирає прогрес задачі (для кнопки «почати спочатку»)."""

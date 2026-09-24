@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -26,6 +27,12 @@ def main() -> int:
         {"xp": db.total_xp(), "streak": db.streak()},
     )
     print(f"Роадмап оновлено: {target}")
+
+    snapshot = ROOT / "progress.json"
+    snapshot.write_text(
+        json.dumps(db.snapshot(), ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    print(f"Прогрес збережено: {snapshot}")
     db.close()
     return 0
 

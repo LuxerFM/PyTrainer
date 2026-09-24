@@ -21,6 +21,9 @@ INTERVALS = (1, 3, 7, 30)
 # Скільки «підказок» зараховуємо, якщо людина скористалась повним розв'язком
 SOLUTION_HINT_LEVELS = 3
 
+# Скільки від базового XP дає одне успішне повторення (множиться на глибину інтервалу)
+REVIEW_BONUS_RATE = 0.2
+
 
 class HasBaseXp(Protocol):
     """Мінімум, який нам потрібен від задачі."""
@@ -46,6 +49,25 @@ def xp_for(
     if not first_time:
         factor *= REPEAT_FACTOR
     return int(round(task.base_xp * factor / 5) * 5)
+
+
+def review_xp(
+    task: HasBaseXp,
+    *,
+    interval_index: int = 0,
+    hints_used: int = 0,
+    solution_used: bool = False,
+) -> int:
+    """XP за повторне здавання задачі.
+
+    Чим довший інтервал витримав — тим цінніше згадати: перше повторення
+    дає 20% базового XP, друге — 40%, третє — 60%, четверте — 80%.
+    Без цього повторювати було б невигідно порівняно з бігом уперед.
+    """
+    effective = max(hints_used, SOLUTION_HINT_LEVELS) if solution_used else hints_used
+    factor = max(MIN_FACTOR, 1 - HINT_PENALTY * effective)
+    depth = min(1.0, REVIEW_BONUS_RATE * (max(0, interval_index) + 1))
+    return int(round(task.base_xp * depth * factor / 5) * 5)
 
 
 def next_interval(index: int, ok: bool) -> tuple[int, int | None]:

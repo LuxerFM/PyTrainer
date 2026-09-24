@@ -68,15 +68,28 @@ def weak_topics(rows) -> list[TopicStat]:
 
 
 def overall(rows) -> dict:
-    """Загальні цифри для верхніх карток статистики."""
+    """Загальні цифри для верхніх карток статистики.
+
+    Ключова різниця: «здано» — це задача, яку ти вже розв'язав, а «утримано» —
+    та, що більше не потребує повторень. Друга цифра чесніша щодо знань.
+    """
     tasks = topic_stats(rows)
+    ready_ids = {task.id for task in study_tasks()}
     done = sum(stat.done for stat in tasks)
     total = sum(stat.total for stat in tasks)
     attempts = sum(stat.attempts for stat in tasks)
     passes = sum(stat.passes for stat in tasks)
+    mastered = sum(
+        1
+        for row in rows
+        if row["status"] == "done"
+        and row["task_id"] in ready_ids
+        and row["due_date"] is None
+    )
     return {
         "done": done,
         "total": total,
+        "mastered": mastered,
         "attempts": attempts,
         "passes": passes,
         "success_rate": passes / attempts if attempts else 0.0,

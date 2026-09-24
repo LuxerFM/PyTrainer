@@ -144,6 +144,56 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(row["passes"], 1)
         self.assertEqual(row["status"], "done")
 
+    def test_bonus_xp_adds_to_total(self):
+        self.db.mark_solved("w1-hello", 100)
+        self.db.add_bonus_xp("w1-hello", 20)
+        self.db.add_bonus_xp("w1-hello", 30)
+        self.assertEqual(self.db.bonus_xp("w1-hello"), 50)
+        self.assertEqual(self.db.total_xp(), 150)
+
+    def test_bonus_xp_is_separate_from_best_xp(self):
+        self.db.mark_solved("w1-hello", 100)
+        self.db.add_bonus_xp("w1-hello", 20)
+        # повторний прохід з меншим XP не має обнуляти бонус
+        self.db.mark_repeat_passed("w1-hello", 30)
+        self.assertEqual(self.db.best_xp("w1-hello"), 100)
+        self.assertEqual(self.db.total_xp(), 120)
+
+    def test_snapshot_skips_untouched_tasks(self):
+        self.db.save_code("w1-hello", "код")        # лише відкрита, але не здана
+        self.db.mark_solved("w1-vars", 85)
+        snapshot = self.db.snapshot()
+        ids = [row["task_id"] for row in snapshot["progress"]]
+        self.assertEqual(ids, ["w1-vars"])
+
+    def test_restore_brings_back_progress_and_reviews(self):
+        self.db.mark_solved("w1-hello", 100)
+        self.db.add_bonus_xp("w1-hello", 20)
+        self.db.schedule_review("w1-vars", 3, 1)
+        snapshot = self.db.snapshot()
+
+        other = Database(":memory:")
+        try:
+            restored = other.restore(snapshot)
+            self.assertEqual(restored, 1)
+            self.assertEqual(other.total_xp(), 120)
+            self.assertIsNotNone(other.review("w1-vars"))
+            self.assertEqual(other.review("w1-vars")["interval_index"], 1)
+        finally:
+            other.close()
+
+    def test_total_active_seconds(self):
+        self.db.add_active_seconds("w1-hello", 60)
+        self.db.add_active_seconds("w1-vars", 30)
+        self.assertEqual(self.db.total_active_seconds(), 90)
+
+    def test_task_results_include_review_state(self):
+        self.db.mark_solved("w1-hello", 100)
+        self.db.schedule_review("w1-hello", 1, 0)
+        row = [r for r in self.db.task_results() if r["task_id"] == "w1-hello"][0]
+        self.assertIsNotNone(row["due_date"])
+        self.assertEqual(row["interval_index"], 0)
+
     def test_reset_task_clears_everything(self):
         self.db.mark_solved("w1-hello", 100)
         self.db.record_attempt("w1-hello", ok=True, with_checks=True, xp=100)

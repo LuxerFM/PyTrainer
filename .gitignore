@@ -4,4 +4,6 @@ __pycache__/
 *.pyc
 screenshots/
 solutions/
+docs/images/*.html
 pytrainer.db
+pytrainer-demo.db

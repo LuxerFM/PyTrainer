@@ -38,6 +38,28 @@ class XpTests(unittest.TestCase):
                         scoring.xp_for(task, hints_used=1))
 
 
+class ReviewXpTests(unittest.TestCase):
+    def test_first_review_gives_fifth_of_base(self):
+        task = find_task("w1-hello")          # 100 XP
+        self.assertEqual(scoring.review_xp(task, interval_index=0), 20)
+
+    def test_deeper_intervals_pay_more(self):
+        task = find_task("w1-hello")
+        rewards = [scoring.review_xp(task, interval_index=index) for index in range(4)]
+        self.assertEqual(rewards, sorted(rewards))
+        self.assertEqual(rewards[-1], 80)
+
+    def test_hints_reduce_review_bonus(self):
+        task = find_task("w1-hello")
+        self.assertLess(scoring.review_xp(task, interval_index=1, hints_used=2),
+                        scoring.review_xp(task, interval_index=1))
+
+    def test_solution_kills_half_of_the_bonus(self):
+        task = find_task("w1-hello")
+        self.assertEqual(scoring.review_xp(task, interval_index=1, solution_used=True),
+                         scoring.review_xp(task, interval_index=1, hints_used=3))
+
+
 class IntervalTests(unittest.TestCase):
     def test_intervals_grow(self):
         self.assertEqual(scoring.next_interval(-1, True), (0, 1))

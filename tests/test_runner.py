@@ -5,8 +5,9 @@
 
 import unittest
 
+from curriculum import find_task
 from curriculum.schema import code, stdout
-from trainer.core.runner import run_code
+from trainer.core.runner import run_code, run_task
 
 
 class RunCodeTests(unittest.TestCase):
@@ -96,6 +97,55 @@ class RunCodeTests(unittest.TestCase):
     def test_marker_line_is_hidden_from_stdout(self):
         result = run_code('print("готово")', [code("перевірка", "assert True")])
         self.assertEqual(result.stdout, "готово")
+
+    # ---------- файли проєкту ----------
+
+    def test_extra_files_are_importable(self):
+        source = "import utils\nprint(utils.double(21))\n"
+        result = run_code(
+            source,
+            files={"utils.py": "def double(value):\n    return value * 2\n"},
+        )
+        self.assertEqual(result.stdout, "42")
+
+    def test_extra_files_work_with_code_checks(self):
+        source = "import utils\n\ndef answer():\n    return utils.double(21)\n"
+        result = run_code(
+            source,
+            [code("використовує модуль", "assert answer() == 42")],
+            files={"utils.py": "def double(value):\n    return value * 2\n"},
+        )
+        self.assertTrue(result.all_passed)
+
+    def test_missing_file_is_reported(self):
+        result = run_code("import utils\n", [code("перевірка", "assert True")])
+        self.assertIn("ModuleNotFoundError", result.first_error)
+
+    def test_custom_entrypoint(self):
+        result = run_code(
+            'print("з main")\n',
+            entrypoint="main.py",
+            files={"helper.py": "VALUE = 1\n"},
+        )
+        self.assertEqual(result.stdout, "з main")
+
+    # ---------- захист від великого виводу ----------
+
+    def test_huge_output_is_truncated(self):
+        result = run_code(
+            "for index in range(200000):\n    print('x' * 40)\n", timeout=10
+        )
+        self.assertLess(len(result.stdout), 130_000)
+        self.assertIn("вивід обрізано", result.stdout)
+        self.assertTrue(result.output_truncated)
+
+    # ---------- запуск у контексті задачі ----------
+
+    def test_run_task_uses_task_files(self):
+        task = find_task("m2-module")
+        self.assertTrue(task.has_files)
+        result = run_task(task, task.solution_hint.text)
+        self.assertTrue(result.all_passed)
 
 
 if __name__ == "__main__":

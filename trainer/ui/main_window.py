@@ -1,22 +1,24 @@
 """Головне вікно тренажера — тут зустрічаються всі частини застосунку.
 
-Розділення відповідальності просте:
-  * curriculum — що вчити (дані);
-  * trainer/core — як перевіряти й що пам'ятати (без інтерфейсу);
-  * trainer/ui — як це показати.
+Розділення відповідальності:
 
-Це вікно лише зшиває три шари: відкриває задачу, запускає код, записує
-результат у базу й оновлює екрани.
+    curriculum/       що вчити (дані: місяці, теми, задачі, перевірки)
+    trainer/core/     як перевіряти й що пам'ятати (runner, db, scoring, session)
+    trainer/ui/       як це показати (це вікно)
+
+Тому вікно не містить жодного правила навчання: воно питає `StudySession`,
+що сталося після спроби, і малює результат.
 """
 
 from __future__ import annotations
 
+import json
 import threading
 from datetime import date
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QKeySequence, QShortcut, QTextCursor
+from PySide6.QtGui import QAction, QColor, QKeySequence, QShortcut, QTextCursor
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -32,18 +34,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from curriculum import (
-    CURRICULUM,
-    find_task,
-    first_unfinished,
-    study_tasks,
-    topic_of,
-)
+from curriculum import CURRICULUM, find_task, first_unfinished, study_tasks, topic_of
 from curriculum.roadmap_md import write as write_roadmap
 
 from ..core import scoring
 from ..core.db import Database
-from ..core.runner import RunResult, run_code
+from ..core.runner import RunResult, run_task
+from ..core.session import StudySession, StudyUpdate
 from ..core.stats import overall, weak_topics
 from .editor import CodeEditor
 from .sidebar import SideNav
@@ -52,11 +49,12 @@ from .theme import MONO_FONTS, Colors, pick_font
 
 ROOT = Path(__file__).resolve().parents[2]
 ROADMAP_PATH = ROOT / "Python-Roadmap.md"
+PROGRESS_PATH = ROOT / "progress.json"
 TICK_SECONDS = 5
 
 
 def _human_date(iso: str) -> str:
-    """2026-09-26 → 26.09 (з позначкою прострочення)."""
+    """2026-09-26 → «26.09 · через 2 дн.»"""
     try:
         target = date.fromisoformat(iso)
     except ValueError:
@@ -76,17 +74,22 @@ class MainWindow(QMainWindow):
     run_finished = Signal(object)
 
     def __init__(self, db: Database | None = None,
-                 roadmap_path: str | Path = ROADMAP_PATH) -> None:
+                 roadmap_path: str | Path = ROADMAP_PATH,
+                 progress_path: str | Path = PROGRESS_PATH) -> None:
         super().__init__()
         self.setWindowTitle("PyTrainer — тренажер Python")
         self.resize(1480, 920)
         self.setMinimumSize(1120, 700)
 
         self.db = db or Database()
+        self.session = StudySession(self.db)
         self.roadmap_path = Path(roadmap_path)
+        self.progress_path = Path(progress_path)
+
         self._task = None
         self._running = False
         self._review_mode = False
+        self._last_saved = ""
 
         self.sidebar = SideNav()
         self.editor = CodeEditor()
@@ -111,15 +114,18 @@ class MainWindow(QMainWindow):
         self.timer.start()
 
     # ==================================================================
-    # збирання інтерфейсу
+    # інтерфейс
     # ==================================================================
 
     def _build_menu(self) -> None:
         file_menu = self.menuBar().addMenu("Файл")
         self._add_action(file_menu, "Зберегти код…", "Ctrl+S", self.save_code_as)
         self._add_action(file_menu, "Скинути код до заготовки", None, self.reset_code)
+        file_menu.addSeparator()
         self._add_action(file_menu, "Експортувати розв'язані задачі…", None,
                          self.export_solutions)
+        self._add_action(file_menu, "Експортувати прогрес…", None, self.export_progress)
+        self._add_action(file_menu, "Імпортувати прогрес…", None, self.import_progress)
         file_menu.addSeparator()
         self._add_action(file_menu, "Оновити Python-Roadmap.md", None, self.rewrite_roadmap)
         file_menu.addSeparator()
@@ -134,8 +140,12 @@ class MainWindow(QMainWindow):
         self._add_action(study_menu, "На повторення", "Ctrl+R", lambda: self.sidebar.set_mode(1))
         self._add_action(study_menu, "Прогрес і слабкі місця", "Ctrl+P",
                          lambda: self.sidebar.set_mode(2))
-        self._add_action(study_menu, "Відкрити наступну незавершену задачу", "Ctrl+N",
+        self._add_action(study_menu, "Наступна незавершена задача", "Ctrl+N",
                          self.open_next_task)
+        self._add_action(study_menu, "Знайти задачу", "Ctrl+F", self.focus_search)
+        study_menu.addSeparator()
+        self._add_action(study_menu, "Позначити виконаним (зроблено поза тренажером)",
+                         None, self.toggle_manual_done)
         study_menu.addSeparator()
         self._add_action(study_menu, "Скинути прогрес цієї задачі", None,
                          self.reset_task_progress)
@@ -144,9 +154,7 @@ class MainWindow(QMainWindow):
         self._add_action(help_menu, "Гарячі клавіші", "F1", self.show_shortcuts)
         self._add_action(help_menu, "Про тренажер", None, self.show_about)
 
-    def _add_action(self, menu, text: str, shortcut: str | None, slot):
-        from PySide6.QtGui import QAction
-
+    def _add_action(self, menu, text: str, shortcut: str | None, slot) -> QAction:
         action = QAction(text, self)
         if shortcut:
             action.setShortcut(QKeySequence(shortcut))
@@ -186,14 +194,14 @@ class MainWindow(QMainWindow):
         )
         bar.addWidget(spacer)
 
+        self.today_badge = QLabel("Сьогодні: 0 запусків")
+        self.today_badge.setObjectName("Badge")
+        self.review_badge = QLabel("На повторення: 0")
+        self.review_badge.setObjectName("Badge")
         self.xp_badge = QLabel("XP 0")
         self.xp_badge.setObjectName("BadgeAccent")
         self.streak_badge = QLabel("Серія: 0 дн.")
         self.streak_badge.setObjectName("Badge")
-        self.today_badge = QLabel("Сьогодні: 0 спроб")
-        self.today_badge.setObjectName("Badge")
-        self.review_badge = QLabel("На повторення: 0")
-        self.review_badge.setObjectName("Badge")
         for badge in (self.today_badge, self.review_badge, self.xp_badge,
                       self.streak_badge):
             bar.addWidget(badge)
@@ -291,6 +299,7 @@ class MainWindow(QMainWindow):
         self.sidebar.task_selected.connect(self.open_task)
         self.panel.hint_revealed.connect(self._on_hint_revealed)
         self.panel.solution_use_requested.connect(self._use_solution)
+        self.panel.manual_toggle_requested.connect(self.toggle_manual_done)
         self.editor.run_requested.connect(self.run_code_only)
         self.editor.cursorPositionChanged.connect(self._update_position)
         self.run_finished.connect(self._on_run_finished)
@@ -310,12 +319,20 @@ class MainWindow(QMainWindow):
             self.editor.setPlainText("")
             self.editor.setReadOnly(True)
             self._set_run_enabled(False)
+            done = task is not None and self.db.status(task.id) == "done"
             self.panel.show_placeholder(
                 task.title if task else task_id,
-                "Ця тема ще попереду: план уже видно в роадмапі, а задачі й теорію "
-                "додамо після місяця 1. Спершу — база, без неї решта не має сенсу.",
+                "Цей пункт робиться не в тренажері, а у твоєму терміналі — "
+                "саме там навичка й закріплюється. Зробив? Познач галочкою, "
+                "щоб вона з'явилась і в Python-Roadmap.md."
+                if task is not None else "Задачу не знайдено.",
+                task_id=task.id if task is not None else None,
+                manual_done=done,
             )
-            self.status_msg.setText("Задача ще не написана — тема попереду")
+            self.status_msg.setText(
+                "Пункт поза тренажером — познач галочкою, коли зробиш"
+                if task is not None else "Задачу не знайдено"
+            )
             return
 
         self._task = task
@@ -326,19 +343,20 @@ class MainWindow(QMainWindow):
         self.db.mark_in_progress(task.id)
         hints_used = self.db.hints_used(task.id)
         active = self.db.active_seconds(task.id)
-        solved = self.db.status(task.id) == "done"
 
         self.panel.show_task(
             task,
             topic=topic_of(task.id),
             hints_used=hints_used,
             active_seconds=active,
-            xp_preview=self._xp_now(task),
+            xp_preview=self.session.preview_xp(task),
         )
         self._load_history(task.id)
 
         saved = self.db.saved_code(task.id)
-        self.editor.setPlainText(saved if saved else task.starter)
+        text = saved if saved else task.starter
+        self.editor.setPlainText(text)
+        self._last_saved = text
         self.console.clear()
         self._show_stdin_hint(task)
         self.file_label.setText(f"{task.id}.py")
@@ -354,7 +372,46 @@ class MainWindow(QMainWindow):
                 self.open_task(task.id)
                 self.sidebar.select(task.id)
                 return
-        self.status_msg.setText("Усі задачі місяця 1 здані — час на проєкти 🎉")
+        self.status_msg.setText("Усі задачі, які вже написані, здані 🎉")
+
+    def focus_search(self) -> None:
+        self.sidebar.set_mode(0)
+        self.sidebar.search.setFocus()
+
+    def toggle_manual_done(self, task_id: str | bool | None = None) -> None:
+        """Галочка для пунктів, які робляться поза тренажером (venv, Git, pytest)."""
+        identifier = task_id if isinstance(task_id, str) and task_id else self._current_id()
+        task = find_task(identifier) if identifier else None
+        if task is None:
+            self.status_msg.setText("Спершу вибери пункт у плані зліва")
+            return
+
+        if self.db.status(task.id) == "done":
+            answer = QMessageBox.question(
+                self, "Зняти позначку?",
+                f'«{task.title}» повернеться в план як незавершений пункт.',
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            self.db.reset_task(task.id)
+            self._log(f'Позначку знято: {task.title}', Colors.muted)
+        else:
+            self.session.mark_manual_done(task)
+            self._log(f'Позначено виконаним: {task.title}', Colors.success)
+
+        self._refresh_all()
+        self.open_task(task.id)
+        self.rewrite_roadmap(silent=True)
+        self._write_progress(silent=True)
+
+    def _current_id(self) -> str | None:
+        """Id поточної задачі або поточного вибраного пункту плану."""
+        if self._task is not None:
+            return self._task.id
+        item = self.sidebar.tree.currentItem()
+        if item is not None:
+            return item.data(0, Qt.ItemDataRole.UserRole)
+        return None
 
     def reset_code(self) -> None:
         if self._task is None:
@@ -365,6 +422,7 @@ class MainWindow(QMainWindow):
         )
         if answer == QMessageBox.StandardButton.Yes:
             self.editor.setPlainText(self._task.starter)
+            self._last_saved = self._task.starter
             self.console.clear()
             self.status_msg.setText("Код скинуто до заготовки")
 
@@ -394,12 +452,18 @@ class MainWindow(QMainWindow):
 
     def _save_current_code(self) -> None:
         if self._task is not None:
-            self.db.save_code(self._task.id, self.editor.toPlainText())
+            text = self.editor.toPlainText()
+            self.db.save_code(self._task.id, text)
+            self._last_saved = text
 
     def _show_stdin_hint(self, task) -> None:
         if task.stdin:
             feed = " / ".join(task.stdin.splitlines())
             self.stdin_label.setText(f"Ввід для запуску: {feed}")
+        elif task.has_files:
+            self.stdin_label.setText(
+                "У цій задачі є файли: " + ", ".join(task.files)
+            )
         else:
             self.stdin_label.setText("")
 
@@ -423,6 +487,7 @@ class MainWindow(QMainWindow):
         task = self._task
         code = self.editor.toPlainText()
         self.db.save_code(task.id, code)
+        self._last_saved = code
         checks = list(task.checks) if with_checks else []
 
         self._running = True
@@ -436,11 +501,11 @@ class MainWindow(QMainWindow):
         self.status_msg.setText(f"{label}…")
 
         threading.Thread(
-            target=self._run_in_thread, args=(code, checks, task.stdin), daemon=True
+            target=self._run_in_thread, args=(task, code, checks), daemon=True
         ).start()
 
-    def _run_in_thread(self, code: str, checks, stdin: str) -> None:
-        self.run_finished.emit(run_code(code, checks, stdin=stdin))
+    def _run_in_thread(self, task, code: str, checks) -> None:
+        self.run_finished.emit(run_task(task, code, checks))
 
     def _on_run_finished(self, result: RunResult) -> None:
         self._running = False
@@ -452,64 +517,54 @@ class MainWindow(QMainWindow):
             self._log(result.stderr, Colors.error)
         if not result.stdout and not result.stderr:
             self._log("(вивід порожній)", Colors.muted)
+        if result.output_truncated:
+            self._log("…вивід обрізано, щоб не з'їсти пам'ять", Colors.warn)
 
         self.panel.show_result(result, bool(result.ran_checks))
 
-        if not result.ran_checks or self._task is None:
+        if self._task is None:
+            return
+        task = self._task
+
+        if not result.ran_checks:
             self.status_msg.setText("Код виконано")
-            self._load_history(self._task.id)
+            self._load_history(task.id)
+            self._refresh_stats()
             return
 
-        task = self._task
-        solved_before = self.db.status(task.id) == "done"
-        xp = self._xp_now(task)
+        update = self.session.record_result(task, result, review_mode=self._review_mode)
 
-        self.db.record_attempt(
-            task.id,
-            ok=result.all_passed,
-            with_checks=True,
-            xp=xp if result.all_passed else 0,
-        )
-
-        if result.all_passed:
-            if solved_before:
-                self.db.mark_repeat_passed(task.id, xp)
-            else:
-                self.db.mark_solved(task.id, xp)
-                self.sidebar.mark(task.id, "done")
-            self._log(f"Усі перевірки пройдено · +{xp} XP", Colors.success)
-            self.status_msg.setText(f"Задача здана! +{xp} XP")
-
-            attempts = self.db.attempts_count(task.id)
-            if self._review_mode:
-                index, days = self.db.schedule_from_result(task.id, True)
-                if days is None:
-                    self._log("Повторення більше не потрібне — задачу засвоєно 🎯",
-                              Colors.success)
-                else:
-                    self._log(f"Наступне повторення: через {days} дн.", Colors.muted)
-            elif scoring.needs_review(
-                solved=True, attempts=attempts,
-                solution_used=self.db.solution_used(task.id),
-            ):
-                self.db.schedule_from_result(task.id, False)
-                self._log(
-                    "Здано не з першого разу — задачу додано в чергу повторень.",
-                    Colors.warn,
-                )
-            else:
-                self.db.clear_review(task.id)
-        else:
-            self.sidebar.mark(task.id, "current")
-            self.db.schedule_from_result(task.id, False)
-            passed = result.passed_count
-            self._log(f"Пройдено {passed} із {len(result.checks)}", Colors.warn)
-            self.status_msg.setText("Є помилки — дивись вкладку «Тести»")
+        if update is None:
+            return
+        self._render_update(update, task, result)
 
         self._refresh_all()
         self._load_history(task.id)
         self._update_timer_label()
         self.rewrite_roadmap(silent=True)
+        self._write_progress(silent=True)
+
+    def _render_update(self, update: StudyUpdate, task, result: RunResult) -> None:
+        """Малює те, що вирішило ядро: XP, статус, чергу повторень."""
+        if update.passed:
+            self.sidebar.mark(task.id, "done")
+            parts = [f"Задача здана! +{update.xp} XP"]
+            if update.bonus_xp:
+                parts.append(f"бонус за повторення +{update.bonus_xp} XP")
+            self._log("Усі перевірки пройдено · " + " · ".join(parts), Colors.success)
+            for note in update.notes:
+                self._log(f"» {note}", Colors.muted if "повторення" in note else Colors.warn)
+            if update.mastered:
+                self._log("Задача утримана — більше не в черзі повторень 🎯",
+                          Colors.success)
+            self.status_msg.setText(parts[0])
+        else:
+            self.sidebar.mark(task.id, "current")
+            self._log(f"Пройдено {result.passed_count} із {len(result.checks)}",
+                      Colors.warn)
+            for note in update.notes:
+                self._log(f"» {note}", Colors.muted)
+            self.status_msg.setText("Є помилки — дивись вкладку «Тести»")
 
     # ==================================================================
     # підказки й таймер активної роботи
@@ -518,54 +573,46 @@ class MainWindow(QMainWindow):
     def _on_hint_revealed(self, index: int, is_solution: bool) -> None:
         if self._task is None:
             return
-        self.db.reveal_hint(self._task.id, index, is_solution)
-        hints_used = self.db.hints_used(self._task.id)
-        self.panel.update_xp_preview(self._xp_now(self._task), hints_used)
-        self._log(f"Підказка {index} — XP за задачу тепер {self._xp_now(self._task)}",
-                  Colors.warn)
+        xp = self.session.record_hint(self._task, index, is_solution)
+        self.panel.update_xp_preview(xp, self.db.hints_used(self._task.id))
+        self._log(f"Підказка {index} — XP за задачу тепер {xp}", Colors.warn)
 
     def _use_solution(self, text: str) -> None:
-        """Вставляє розв'язок у редактор — з чесним попередженням про ціну."""
         if self._task is None:
             return
+        price = scoring.xp_for(self._task, solution_used=True)
         answer = QMessageBox.question(
             self, "Вставити розв'язок?",
             "Код у редакторі буде замінено готовим розв'язком.\n\n"
-            f"XP за цю задачу впаде до {scoring.xp_for(self._task, solution_used=True)},"
-            " а сама задача потрапить у чергу повторень.\n\n"
-            "Усе одно спробуй перебрати його руками — інакше на наступній задачі "
-            "буде так само важко.",
+            f"XP за цю задачу впаде до {price}, а сама задача потрапить у чергу "
+            "повторень.\n\nУсе одно спробуй перебрати код руками — інакше на "
+            "наступній задачі буде так само важко.",
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
 
-        self.db.mark_solution_used(self._task.id)
+        xp = self.session.use_solution(self._task)
         self.editor.setPlainText(text)
         self.editor.setFocus()
-        self.panel.update_xp_preview(
-            self._xp_now(self._task), self.db.hints_used(self._task.id)
-        )
+        self.panel.update_xp_preview(xp, self.db.hints_used(self._task.id))
         self._log(
             "Розв'язок вставлено в редактор. Перепиши його своїми руками — "
             "це і є вправа.",
             Colors.warn,
         )
 
-    def _xp_now(self, task) -> int:
-        """Скільки XP дасть задача просто зараз, з усіма штрафами."""
-        return scoring.xp_for(
-            task,
-            hints_used=self.db.hints_used(task.id),
-            first_time=self.db.status(task.id) != "done",
-            solution_used=self.db.solution_used(task.id),
-        )
-
     def _tick(self) -> None:
-        """Раз на 5 секунд: рахуємо час роботи над задачею."""
+        """Раз на 5 секунд: рахуємо час роботи й тихо зберігаємо код."""
         if self._task is None or self._running:
             return
         if not self.isActiveWindow():
             return  # у фоні час не йде
+
+        code = self.editor.toPlainText()
+        if code != self._last_saved:      # автозбереження: крах не з'їсть роботу
+            self.db.save_code(self._task.id, code)
+            self._last_saved = code
+
         if self.db.status(self._task.id) == "done":
             return
 
@@ -578,24 +625,25 @@ class MainWindow(QMainWindow):
             self.timer_label.setText("")
             return
         active = self.db.active_seconds(self._task.id)
-        solved = self.db.status(self._task.id) == "done"
-        if solved:
-            self.timer_label.setText("Задача здана ✓")
+        if self.db.status(self._task.id) == "done":
+            self.timer_label.setText(
+                f"Здано ✓ · час над задачею {int(active) // 60} хв"
+            )
             return
         left = max(0, int(self._task.minutes * 60 - active))
+        clock = f"{int(active) // 60}:{int(active) % 60:02d}"
         if left:
             self.timer_label.setText(
-                f"Час над задачею {int(active) // 60}:{int(active) % 60:02d} · "
-                f"розв'язок через {left // 60}:{left % 60:02d}"
+                f"Час над задачею {clock} · розв'язок через "
+                f"{left // 60}:{left % 60:02d}"
             )
         else:
             self.timer_label.setText(
-                f"Час над задачею {int(active) // 60}:{int(active) % 60:02d} · "
-                "розв'язок відкрито"
+                f"Час над задачею {clock} · розв'язок відкрито"
             )
 
     # ==================================================================
-    # роадмап, статистика, історія
+    # роадмап, прогрес, статистика
     # ==================================================================
 
     def rewrite_roadmap(self, silent: bool = False) -> None:
@@ -608,73 +656,48 @@ class MainWindow(QMainWindow):
         if not silent:
             self.status_msg.setText(f"Роадмап оновлено: {self.roadmap_path.name}")
 
-    def _refresh_all(self) -> None:
-        self.sidebar.load_curriculum(CURRICULUM, self.db.statuses())
-        self._refresh_progress()
-        self._refresh_reviews()
-        self._refresh_stats()
-
-    def _refresh_progress(self) -> None:
-        tasks = study_tasks()
-        done = sum(1 for task in tasks if self.db.status(task.id) == "done")
-        self.sidebar.set_progress(done, len(tasks))
-
-    def _refresh_reviews(self) -> None:
-        due_rows = []
-        for row in self.db.due_reviews():
-            task = find_task(row["task_id"])
-            if task is None:
-                continue
-            due_rows.append({
-                "task_id": task.id,
-                "title": task.title,
-                "when": f'{_human_date(row["due_date"])} · інтервал '
-                        f'{scoring.INTERVALS[min(row["interval_index"], len(scoring.INTERVALS) - 1)]} дн.',
-                "tooltip": f'{task.level} · {task.base_xp} XP',
-            })
-
-        later_rows = []
-        for row in self.db.upcoming_reviews():
-            task = find_task(row["task_id"])
-            if task is None:
-                continue
-            later_rows.append({
-                "task_id": task.id,
-                "title": task.title,
-                "when": _human_date(row["due_date"]),
-                "tooltip": f'{task.level} · {task.base_xp} XP',
-            })
-
-        self.sidebar.set_reviews(due_rows, later_rows)
-        self.review_badge.setText(f"На повторення: {len(due_rows)}")
-
-    def _refresh_stats(self) -> None:
-        rows = self.db.task_results()
-        xp = self.db.total_xp()
-        streak = self.db.streak()
-        self.sidebar.set_stats(
-            overall(rows), weak_topics(rows), self.db.attempts_per_day(), xp, streak
+    def _write_progress(self, silent: bool = False) -> None:
+        """Пише progress.json — його можна тримати в Git і переносити між машинами."""
+        self.progress_path.write_text(
+            json.dumps(self.db.snapshot(), ensure_ascii=False, indent=2),
+            encoding="utf-8",
         )
-        self.xp_badge.setText(f"XP {xp}")
-        self.streak_badge.setText(
-            f"Серія: {streak} дн." if streak != 1 else "Серія: 1 день"
-        )
-        self._update_today_badge(streak)
+        if not silent:
+            self.status_msg.setText(f"Прогрес збережено: {self.progress_path.name}")
 
-    def _update_today_badge(self, streak: int) -> None:
-        """Нагадування про сьогоднішню практику — серія днів не чекає."""
-        today = self.db.attempts_per_day(days=1).get(date.today().isoformat(), 0)
-        if today:
-            self.today_badge.setText(f"Сьогодні: {today} спроб ✓")
-            self.today_badge.setStyleSheet(f"color: {Colors.success};")
+    def export_progress(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Експортувати прогрес", "progress.json", "JSON (*.json)"
+        )
+        if not path:
+            return
+        Path(path).write_text(
+            json.dumps(self.db.snapshot(), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        self.status_msg.setText(f"Прогрес експортовано: {Path(path).name}")
+
+    def import_progress(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Імпортувати прогрес", "progress.json", "JSON (*.json)"
+        )
+        if not path:
+            return
+        try:
+            data = json.loads(Path(path).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            QMessageBox.warning(self, "Не вдалося прочитати",
+                                f"Файл не схожий на progress.json.\n\n{error}")
             return
 
-        if streak:
-            self.today_badge.setText("Сьогодні: 0 — не втрать серію")
-            self.today_badge.setStyleSheet(f"color: {Colors.warn};")
-        else:
-            self.today_badge.setText("Сьогодні: 0 спроб")
-            self.today_badge.setStyleSheet(f"color: {Colors.muted};")
+        restored = self.db.restore(data)
+        self._refresh_all()
+        self.rewrite_roadmap(silent=True)
+        QMessageBox.information(
+            self, "Готово",
+            f"Відновлено задач: {restored}.\n"
+            "Якщо задача вже була здана — її XP і черга повторень теж підтягнулись.",
+        )
 
     def export_solutions(self) -> None:
         """Складає розв'язані задачі у файли — це вже заготовка портфоліо."""
@@ -683,7 +706,8 @@ class MainWindow(QMainWindow):
         if not done:
             QMessageBox.information(
                 self, "Немає що експортувати",
-                "Спершу здай хоча б одну задачу — і її код буде що експортувати.",
+                "Спершу здай хоча б одну задачу з тестами — і її код буде "
+                "що експортувати.",
             )
             return
 
@@ -704,12 +728,12 @@ class MainWindow(QMainWindow):
             code = self.db.saved_code(task.id)
             if not code:
                 continue
-            header = (
-                f'"""Задача «{task.title}» ({task.level}) — тренажер PyTrainer."""\n\n'
-            )
+            header = f'"""Задача «{task.title}» ({task.level}) — тренажер PyTrainer."""\n\n'
             (target / f"{task.id}.py").write_text(header + code, encoding="utf-8")
             written += 1
-            index_lines.append(f"- [x] {task.title} — `{task.id}.py`")
+            index_lines.append(
+                f"- [x] {task.title} — `{task.id}.py` · {task.base_xp} XP"
+            )
 
         index_lines += [
             "",
@@ -725,11 +749,87 @@ class MainWindow(QMainWindow):
             "Наступний крок із роадмапу — викласти це на GitHub.",
         )
 
+    def _refresh_all(self) -> None:
+        self.sidebar.load_curriculum(CURRICULUM, self.db.statuses())
+        self._refresh_progress()
+        self._refresh_reviews()
+        self._refresh_stats()
+
+    def _refresh_progress(self) -> None:
+        self.sidebar.set_progress(self._done_count(), len(study_tasks()))
+
+    def _done_count(self) -> int:
+        return sum(1 for task in study_tasks()
+                   if self.db.status(task.id) == "done")
+
+    def _refresh_reviews(self) -> None:
+        due_rows = []
+        for row in self.db.due_reviews():
+            task = find_task(row["task_id"])
+            if task is None:
+                continue
+            depth = min(row["interval_index"], len(scoring.INTERVALS) - 1)
+            due_rows.append({
+                "task_id": task.id,
+                "title": task.title,
+                "when": f'{_human_date(row["due_date"])} · '
+                        f'інтервал {scoring.INTERVALS[depth]} дн.',
+                "tooltip": f"{task.level} · {task.base_xp} XP",
+            })
+
+        later_rows = []
+        for row in self.db.upcoming_reviews():
+            task = find_task(row["task_id"])
+            if task is None:
+                continue
+            later_rows.append({
+                "task_id": task.id,
+                "title": task.title,
+                "when": _human_date(row["due_date"]),
+                "tooltip": f"{task.level} · {task.base_xp} XP",
+            })
+
+        self.sidebar.set_reviews(due_rows, later_rows)
+        self.review_badge.setText(f"На повторення: {len(due_rows)}")
+
+    def _refresh_stats(self) -> None:
+        rows = self.db.task_results()
+        summary = self.session.summary()
+        self.sidebar.set_stats(
+            overall(rows),
+            weak_topics(rows),
+            self.db.attempts_per_day(),
+            summary["xp"],
+            summary["streak"],
+            self.db.total_active_seconds(),
+        )
+        self.xp_badge.setText(f'XP {summary["xp"]}')
+        streak = summary["streak"]
+        self.streak_badge.setText(
+            f"Серія: {streak} дн." if streak != 1 else "Серія: 1 день"
+        )
+        self._update_today_badge(streak)
+
+    def _update_today_badge(self, streak: int) -> None:
+        """Нагадування про сьогоднішню практику — серія днів не чекає."""
+        today = self.db.attempts_per_day(days=1).get(date.today().isoformat(), 0)
+        if today:
+            self.today_badge.setText(f"Сьогодні: {today} запусків ✓")
+            self.today_badge.setStyleSheet(f"color: {Colors.success};")
+            return
+
+        if streak:
+            self.today_badge.setText("Сьогодні: 0 — не втрать серію")
+            self.today_badge.setStyleSheet(f"color: {Colors.warn};")
+        else:
+            self.today_badge.setText("Сьогодні: 0 запусків")
+            self.today_badge.setStyleSheet(f"color: {Colors.muted};")
+
     def _load_history(self, task_id: str) -> None:
         self.panel.set_history(
             self.db.history(task_id),
             solved=self.db.status(task_id) == "done",
-            best_xp=self.db.best_xp(task_id),
+            best_xp=self.db.best_xp(task_id) + self.db.bonus_xp(task_id),
             hints_used=self.db.hints_used(task_id),
             active_seconds=self.db.active_seconds(task_id),
         )
@@ -767,6 +867,7 @@ class MainWindow(QMainWindow):
             "Ctrl+N — наступна незавершена задача\n"
             "Ctrl+R — черга повторень\n"
             "Ctrl+P — прогрес і слабкі місця\n"
+            "Ctrl+F — пошук задачі\n"
             "Tab / Shift+Tab — відступ / зменшити відступ\n"
             "Ctrl+S — зберегти код у файл\n"
             "F1 — ця довідка",
@@ -776,16 +877,17 @@ class MainWindow(QMainWindow):
         QMessageBox.information(
             self, "Про тренажер",
             "PyTrainer — тренажер Python з перевіркою коду.\n\n"
-            "Твій код виконується в окремому процесі Python із таймаутом 5 с, "
-            "тому навіть while True не зашкодить програмі.\n\n"
+            "Твій код виконується в окремому процесі Python із таймаутом 5 с і "
+            "лімітом виводу, тому навіть while True і print у циклі не "
+            "зашкодять програмі.\n\n"
             "Прогрес, XP, підказки й черга повторень зберігаються в SQLite "
-            f"({Path(self.db.path).name}).\n"
-            "Роадмап Python-Roadmap.md генерується з цього ж плану — галочки "
-            "ставляться самі.",
+            f"({Path(self.db.path).name}), а Python-Roadmap.md і progress.json "
+            "оновлюються самі.",
         )
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self._save_current_code()
         self.rewrite_roadmap(silent=True)
+        self._write_progress(silent=True)
         self.db.close()
         super().closeEvent(event)

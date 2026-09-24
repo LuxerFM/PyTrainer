@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "saved_at": "2026-09-24T23:00:41",
+  "progress": [
+    {
+      "task_id": "w1-hello",
+      "status": "done",
+      "solved_at": "2026-09-24T22:42:58",
+      "best_xp": 30,
+      "bonus_xp": 0,
+      "hints_used": 0,
+      "solution_used": 0,
+      "active_seconds": 0.0
+    },
+    {
+      "task_id": "w1-vars",
+      "status": "done",
+      "solved_at": "2026-09-24T22:42:58",
+      "best_xp": 0,
+      "bonus_xp": 0,
+      "hints_used": 0,
+      "solution_used": 0,
+      "active_seconds": 0.0
+    },
+    {
+      "task_id": "w1-input",
+      "status": "done",
+      "solved_at": "2026-09-24T22:42:58",
+      "best_xp": 0,
+      "bonus_xp": 0,
+      "hints_used": 0,
+      "solution_used": 0,
+      "active_seconds": 0.0
+    },
+    {
+      "task_id": "w1-if-even",
+      "status": "done",
+      "solved_at": "2026-09-24T22:42:58",
+      "best_xp": 0,
+      "bonus_xp": 0,
+      "hints_used": 0,
+      "solution_used": 0,
+      "active_seconds": 0.0
+    },
+    {
+      "task_id": "w1-calc",
+      "status": "done",
+      "solved_at": "2026-09-24T22:42:58",
+      "best_xp": 0,
+      "bonus_xp": 0,
+      "hints_used": 0,
+      "solution_used": 0,
+      "active_seconds": 0.0
+    },
+    {
+      "task_id": "w2-for",
+      "status": "done",
+      "solved_at": "2026-09-24T22:42:58",
+      "best_xp": 0,
+      "bonus_xp": 0,
+      "hints_used": 0,
+      "solution_used": 0,
+      "active_seconds": 0.0
+    },
+    {
+      "task_id": "w2-guess",
+      "status": "done",
+      "solved_at": "2026-09-24T22:42:58",
+      "best_xp": 0,
+      "bonus_xp": 0,
+      "hints_used": 0,
+      "solution_used": 0,
+      "active_seconds": 0.0
+    },
+    {
+      "task_id": "w1-arith",
+      "status": "current",
+      "solved_at": null,
+      "best_xp": 0,
+      "bonus_xp": 0,
+      "hints_used": 0,
+      "solution_used": 0,
+      "active_seconds": 110.0
+    }
+  ],
+  "reviews": [
+    {
+      "task_id": "w1-hello",
+      "due_date": "2026-09-25",
+      "interval_index": 0,
+      "last_result": null
+    }
+  ]
+}

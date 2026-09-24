@@ -46,11 +46,13 @@ class RoadmapTree(QTreeWidget):
         self.setAnimated(True)
         self.setUniformRowHeights(True)
         self._items: dict[str, QTreeWidgetItem] = {}
+        self._stubs: set[str] = set()
         self.itemClicked.connect(self._on_clicked)
 
     def load(self, months, statuses: dict[str, str]) -> None:
         self.clear()
         self._items.clear()
+        self._stubs.clear()
 
         for month in months:
             month_item = QTreeWidgetItem([month.title])
@@ -72,6 +74,8 @@ class RoadmapTree(QTreeWidget):
                     item = QTreeWidgetItem([f'{GLYPH[state]}  {truncate(task.title, 38)}'])
                     item.setData(0, Qt.ItemDataRole.UserRole, task.id)
                     item.setForeground(0, QBrush(QColor(COLOUR[state])))
+                    if task.stub:
+                        self._stubs.add(task.id)
                     item.setToolTip(
                         0,
                         f"{task.title}\n{task.level} · {task.base_xp} XP"
@@ -83,13 +87,31 @@ class RoadmapTree(QTreeWidget):
 
         self.expandToDepth(1)
 
+    def _state_of(self, task_id: str, statuses: dict[str, str]) -> str:
+        """Пункт плану може бути позначкою-заглушкою або реальною задачею."""
+        status = statuses.get(task_id, "todo")
+        if task_id in self._stubs:
+            return "done" if status == "done" else "stub"
+        return status
+
+    def _paint(self, item: QTreeWidgetItem, state: str) -> None:
+        title = item.text(0)[3:]
+        item.setText(0, f"{GLYPH[state]}  {title}")
+        item.setForeground(0, QBrush(QColor(COLOUR[state])))
+
     def mark(self, task_id: str, status: str) -> None:
         item = self._items.get(task_id)
-        if item is None:
-            return
-        title = item.text(0)[3:]
-        item.setText(0, f"{GLYPH[status]}  {title}")
-        item.setForeground(0, QBrush(QColor(COLOUR[status])))
+        if item is not None:
+            self._paint(item, status)
+
+    def apply_statuses(self, statuses: dict[str, str]) -> None:
+        """Оновлює лише позначки — без перебудови дерева.
+
+        Перебудова скидала б розкриті теми, позицію скролу й поточний пошук,
+        а це саме те, що дратує під час роботи над задачею.
+        """
+        for task_id, item in self._items.items():
+            self._paint(item, self._state_of(task_id, statuses))
 
     def select(self, task_id: str) -> None:
         item = self._items.get(task_id)
@@ -147,6 +169,7 @@ class SideNav(QWidget):
         super().__init__(parent)
         self.setObjectName("Panel")
         self.setMinimumWidth(260)
+        self._plan_key: tuple[str, ...] | None = None
 
         self.tree = RoadmapTree()
         self.reviews = ReviewPage()
@@ -264,7 +287,22 @@ class SideNav(QWidget):
             button.setChecked(position == index)
 
     def load_curriculum(self, months, statuses: dict[str, str]) -> None:
-        self.tree.load(months, statuses)
+        """Перше завантаження малює дерево, подальші — лише оновлюють позначки."""
+        plan_key = tuple(
+            task.id for month in months for topic in month.topics for task in topic.tasks
+        )
+        if plan_key == self._plan_key:
+            self.tree.apply_statuses(statuses)
+        else:
+            self.tree.load(months, statuses)
+            self._plan_key = plan_key
+        self._apply_search()
+
+    def _apply_search(self) -> None:
+        """Після оновлення дерева пошук має лишитись застосованим."""
+        query = self.search.text()
+        if query.strip():
+            self._on_search(query)
 
     def mark(self, task_id: str, status: str) -> None:
         self.tree.mark(task_id, status)
@@ -288,5 +326,5 @@ class SideNav(QWidget):
         )
 
     def set_stats(self, overall: dict, weak: list, activity: dict[str, int],
-                  xp: int, streak: int) -> None:
-        self.stats.set_data(overall, weak, activity, xp, streak)
+                  xp: int, streak: int, active_seconds: float = 0.0) -> None:
+        self.stats.set_data(overall, weak, activity, xp, streak, active_seconds)

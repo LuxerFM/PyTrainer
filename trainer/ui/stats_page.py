@@ -1,4 +1,8 @@
-"""Сторінка «Прогрес»: загальні цифри, слабкі теми й календар активності."""
+"""Сторінка «Прогрес»: картки, слабкі теми й календар активності.
+
+Окремо показуємо не лише «здано», а й «утримано» — задачу, яку більше
+не треба повторювати. Саме друга цифра чесно описує рівень знань.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +12,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
     QFrame,
-    QHBoxLayout,
+    QGridLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -51,7 +55,6 @@ class ActivityGrid(QWidget):
         painter.setPen(Qt.PenStyle.NoPen)
 
         today = date.today()
-        # остання колонка — поточний тиждень, перший рядок — понеділок
         start = today - timedelta(days=today.weekday()) - timedelta(weeks=WEEKS - 1)
 
         for week in range(WEEKS):
@@ -81,15 +84,22 @@ class StatsPage(QWidget):
         box.setContentsMargins(14, 12, 14, 12)
         box.setSpacing(10)
 
-        cards = QHBoxLayout()
-        cards.setSpacing(8)
-        self.done_value, done_card = self._card("—", "здано задач")
-        self.xp_value, xp_card = self._card("—", "XP")
-        self.streak_value, streak_card = self._card("—", "серія днів")
-        self.rate_value, rate_card = self._card("—", "успішних спроб")
-        for card in (done_card, xp_card, streak_card, rate_card):
-            cards.addWidget(card)
-        box.addLayout(cards)
+        grid = QGridLayout()
+        grid.setSpacing(8)
+        self.cards: dict[str, QLabel] = {}
+        definitions = (
+            ("done", "здано задач"),
+            ("mastered", "утримано"),
+            ("xp", "XP"),
+            ("streak", "серія днів"),
+            ("rate", "успішність спроб"),
+            ("time", "час у тренажері"),
+        )
+        for index, (key, caption) in enumerate(definitions):
+            value_label, card = self._card("—", caption)
+            self.cards[key] = value_label
+            grid.addWidget(card, index // 2, index % 2)
+        box.addLayout(grid)
 
         weak_title = QLabel("СЛАБКІ МІСЦЯ")
         weak_title.setObjectName("SectionTitle")
@@ -113,7 +123,7 @@ class StatsPage(QWidget):
 
         self.activity = ActivityGrid()
         box.addWidget(self.activity)
-        legend = QLabel("кожна клітинка — день, насиченіший колір = більше спроб")
+        legend = QLabel("кожна клітинка — день, насиченіший колір = більше запусків")
         legend.setObjectName("Subtle")
         legend.setWordWrap(True)
         box.addWidget(legend)
@@ -134,12 +144,16 @@ class StatsPage(QWidget):
         return value_label, frame
 
     def set_data(self, overall: dict, weak: list, activity: dict[str, int],
-                 xp: int, streak: int) -> None:
-        self.done_value.setText(f'{overall.get("done", 0)}/{overall.get("total", 0)}')
-        self.xp_value.setText(str(xp))
-        self.streak_value.setText(str(streak))
+                 xp: int, streak: int, active_seconds: float = 0.0) -> None:
+        self.cards["done"].setText(
+            f'{overall.get("done", 0)}/{overall.get("total", 0)}'
+        )
+        self.cards["mastered"].setText(str(overall.get("mastered", 0)))
+        self.cards["xp"].setText(str(xp))
+        self.cards["streak"].setText(str(streak))
         rate = overall.get("success_rate", 0.0)
-        self.rate_value.setText(f"{round(rate * 100)}%")
+        self.cards["rate"].setText(f"{round(rate * 100)}%")
+        self.cards["time"].setText(f"{int(active_seconds) // 3600} год")
 
         self.weak_list.clear()
         for stat in weak:

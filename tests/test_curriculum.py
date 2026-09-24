@@ -10,7 +10,7 @@ import unittest
 from curriculum import CURRICULUM, all_tasks, study_tasks, topic_of
 from curriculum import roadmap_md
 from curriculum.schema import Check
-from trainer.core.runner import run_code
+from trainer.core.runner import run_code, run_task
 
 
 class CurriculumStructureTests(unittest.TestCase):
@@ -52,9 +52,7 @@ class CurriculumStructureTests(unittest.TestCase):
     def test_solutions_pass_their_checks(self):
         for task in study_tasks():
             with self.subTest(task=task.id):
-                result = run_code(
-                    task.solution_hint.text, list(task.checks), stdin=task.stdin
-                )
+                result = run_task(task, task.solution_hint.text)
                 message = (
                     f'{task.id}: розв\'язок не проходить перевірки — '
                     + "; ".join(
@@ -68,7 +66,7 @@ class CurriculumStructureTests(unittest.TestCase):
     def test_starters_do_not_pass(self):
         for task in study_tasks():
             with self.subTest(task=task.id):
-                result = run_code(task.starter, list(task.checks), stdin=task.stdin)
+                result = run_task(task, task.starter)
                 self.assertFalse(
                     result.all_passed,
                     f"{task.id}: заготовка вже проходить усі перевірки",

@@ -961,11 +961,122 @@ def find(rows: dict[str, int], key: str) -> int | None:
             ),
         ),
         topic(
+            "Тиждень 10 · Проєкт із кількох файлів",
+            task(
+                id="m2-module",
+                title="Свій модуль: import у справжньому проєкті",
+                level="Проєкт",
+                minutes=25,
+                statement="""
+                    <p>Досі весь код жив в одному файлі. У справжньому проєкті так не
+                    буває: логгіка лежить в одному модулі, а користується нею іншій.</p>
+                    <h4>Що вже є в проєкті</h4>
+                    <p>Поруч із твоїм <code>solution.py</code> лежить готовий модуль
+                    <code>utils.py</code> з двома функціями:</p>
+                    <pre>def normalize(category):
+    return " ".join(category.split()).lower()
+
+def format_money(amount):
+    if amount == 0:
+        return "безкоштовно"
+    return f"{amount:.2f} грн"</pre>
+                    <h4>Що треба зробити</h4>
+                    <p>У <code>solution.py</code> напиши дві функції, які
+                    <b>використовують ці самі функції з utils</b> (не копіюй їх):</p>
+                    <ul>
+                        <li><code>total_by_category(rows)</code> — список пар
+                        <code>(категорія, сума)</code> → словник, де ключ —
+                        нормалізована категорія, значення — сума;
+                        однакові категорії додаються;</li>
+                        <li><code>report(rows)</code> — текстовий звіт по категоріях,
+                        відсортований за алфавітом, кожен рядок виду
+                        <code>їжа: 100.00 грн</code>; для порожнього списку — порожній рядок.</li>
+                    </ul>
+                    <h4>Приклад</h4>
+                    <pre>report([("Таксі", 50), ("їжа", 100)])
+→  "таксі: 50.00 грн\\nїжа: 100.00 грн"</pre>
+                    <p class="warn">Саме тому в <code>format_money</code> є окремий випадок
+                    для нуля: якщо ти перепишеш формулу у себе, звіт розійдеться
+                    з поведінкою модуля — і тести це побачать.</p>
+                """,
+                starter='''import utils
+
+
+def total_by_category(rows):
+    # ключ — utils.normalize(категорія), значення — суми
+    return {}
+
+
+def report(rows):
+    # рядки за алфавітом: f"{категорія}: {utils.format_money(сума)}"
+    return ""
+''',
+                files={
+                    "utils.py": '''"""Готовий модуль проєкту: нормалізація та форматування сум."""
+
+
+def normalize(category):
+    return " ".join(category.split()).lower()
+
+
+def format_money(amount):
+    if amount == 0:
+        return "безкоштовно"
+    return f"{amount:.2f} грн"
+''',
+                },
+                checks=[
+                    code("сумує категорії",
+                         "assert total_by_category([('Їжа', 100), ('їжа', 50)]) == "
+                         "{'їжа': 150}"),
+                    code("використовує normalize з utils",
+                         "assert total_by_category([('  Таксі   додому ', 5)]) == "
+                         "{'таксі додому': 5}, "
+                         "'нормалізацію беремо з utils.normalize'"),
+                    code("звіт форматує суми через utils",
+                         "assert report([('їжа', 0)]) == 'їжа: безкоштовно', "
+                         "'нуль має перетворюватись через utils.format_money'"),
+                    code("звіт відсортований за алфавітом",
+                         "assert report([('Таксі', 50), ('Їжа', 100)]) == "
+                         "'таксі: 50.00 грн\\nїжа: 100.00 грн'"),
+                    code("порожній звіт",
+                         "assert report([]) == ''"),
+                    code("модуль справді імпортовано",
+                         "import utils\n"
+                         "assert utils.normalize('  A  B ') == 'a b'"),
+                ],
+                hints=[
+                    hint("де шукати", "Модуль підключають так: import utils — далі його "
+                                      "функції доступні як utils.normalize(...) і "
+                                      "utils.format_money(...)."),
+                    hint("порядок у звіті", "sorted(totals) сортує ключі словника, "
+                                             "а рядок збирай у список і з'єднуй через "
+                                             "'\\n'.join(lines)"),
+                    solution('''import utils
+
+
+def total_by_category(rows):
+    totals = {}
+    for category, amount in rows:
+        key = utils.normalize(category)
+        totals[key] = totals.get(key, 0) + amount
+    return totals
+
+
+def report(rows):
+    totals = total_by_category(rows)
+    return "\\n".join(
+        f"{category}: {utils.format_money(totals[category])}"
+        for category in sorted(totals)
+    )'''),
+                ],
+            ),
+        ),
+        topic(
             "Практика поза тренажером",
             stub("m2-venv", "venv і pip: своє оточення (у тебе вже працює!)"),
             stub("m2-git", "Git: перший коміт у своєму проєкті"),
             stub("m2-pytest", "Перші тести з pytest"),
-            stub("m2-modules", "Свій модуль: розбити код на файли"),
             stub("m2-codewars", "Codewars: 2–3 задачі рівня 8–7 kyu щодня"),
         ),
     ),
