@@ -1,0 +1,7 @@
+.venv/
+.freebuff/
+__pycache__/
+*.pyc
+screenshots/
+solutions/
+pytrainer.db

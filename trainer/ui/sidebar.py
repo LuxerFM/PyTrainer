@@ -1,0 +1,228 @@
+"""Ліва панель: дерево шляху, черга повторень і статистика.
+
+Три режими в одній колонці — щоб не плодити вікна. Перемикач зверху
+перемикає QStackedWidget зі сторінками.
+"""
+
+from __future__ import annotations
+
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QBrush, QColor
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QProgressBar,
+    QStackedWidget,
+    QToolButton,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
+from .review_page import ReviewPage
+from .stats_page import StatsPage
+from .theme import Colors, truncate
+
+GLYPH = {"done": "✓", "current": "▶", "todo": "○", "stub": "◌"}
+COLOUR = {
+    "done": Colors.success,
+    "current": Colors.accent,
+    "todo": Colors.muted,
+    "stub": Colors.scroll,
+}
+
+
+class RoadmapTree(QTreeWidget):
+    """Дерево «місяць → тема → задача» з позначками стану."""
+
+    task_selected = Signal(str)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setHeaderHidden(True)
+        self.setIndentation(14)
+        self.setAnimated(True)
+        self.setUniformRowHeights(True)
+        self._items: dict[str, QTreeWidgetItem] = {}
+        self.itemClicked.connect(self._on_clicked)
+
+    def load(self, months, statuses: dict[str, str]) -> None:
+        self.clear()
+        self._items.clear()
+
+        for month in months:
+            month_item = QTreeWidgetItem([month.title])
+            month_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            month_item.setForeground(0, QBrush(QColor(Colors.text)))
+            font = month_item.font(0)
+            font.setBold(True)
+            month_item.setFont(0, font)
+            self.addTopLevelItem(month_item)
+
+            for topic in month.topics:
+                topic_item = QTreeWidgetItem([topic.title])
+                topic_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                topic_item.setForeground(0, QBrush(QColor(Colors.muted)))
+                month_item.addChild(topic_item)
+
+                for task in topic.tasks:
+                    state = "stub" if task.stub else statuses.get(task.id, "todo")
+                    item = QTreeWidgetItem([f'{GLYPH[state]}  {truncate(task.title, 38)}'])
+                    item.setData(0, Qt.ItemDataRole.UserRole, task.id)
+                    item.setForeground(0, QBrush(QColor(COLOUR[state])))
+                    item.setToolTip(
+                        0,
+                        f"{task.title}\n{task.level} · {task.base_xp} XP"
+                        if not task.stub
+                        else f"{task.title}\nзаплановано",
+                    )
+                    topic_item.addChild(item)
+                    self._items[task.id] = item
+
+        self.expandToDepth(1)
+
+    def mark(self, task_id: str, status: str) -> None:
+        item = self._items.get(task_id)
+        if item is None:
+            return
+        title = item.text(0)[3:]
+        item.setText(0, f"{GLYPH[status]}  {title}")
+        item.setForeground(0, QBrush(QColor(COLOUR[status])))
+
+    def select(self, task_id: str) -> None:
+        item = self._items.get(task_id)
+        if item is not None:
+            self.setCurrentItem(item)
+            self.scrollToItem(item)
+
+    def _on_clicked(self, item: QTreeWidgetItem) -> None:
+        task_id = item.data(0, Qt.ItemDataRole.UserRole)
+        if task_id:
+            self.task_selected.emit(task_id)
+
+
+class SideNav(QWidget):
+    """Колонка зліва: шапка з прогресом, перемикач режимів і сторінки."""
+
+    task_selected = Signal(str)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("Panel")
+        self.setMinimumWidth(260)
+
+        self.tree = RoadmapTree()
+        self.reviews = ReviewPage()
+        self.stats = StatsPage()
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(self._build_header())
+        layout.addWidget(self._build_switch())
+
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self.tree)
+        self.stack.addWidget(self.reviews)
+        self.stack.addWidget(self.stats)
+        layout.addWidget(self.stack, 1)
+
+        self.tree.task_selected.connect(self.task_selected.emit)
+        self.reviews.task_selected.connect(self.task_selected.emit)
+
+    # ---------- шапка ----------
+
+    def _build_header(self) -> QWidget:
+        header = QWidget()
+        header.setObjectName("Header")
+        box = QVBoxLayout(header)
+        box.setContentsMargins(16, 14, 16, 12)
+        box.setSpacing(4)
+
+        brand = QHBoxLayout()
+        brand.setSpacing(0)
+        for text, name in (("Py", "BrandAccent"), ("Trainer", "Brand")):
+            label = QLabel(text)
+            label.setObjectName(name)
+            brand.addWidget(label)
+        brand.addStretch(1)
+        box.addLayout(brand)
+
+        caption = QLabel("Шлях: від нуля до перших грошей")
+        caption.setObjectName("Subtle")
+        box.addWidget(caption)
+        box.addSpacing(6)
+
+        self.progress = QProgressBar()
+        self.progress.setTextVisible(False)
+        self.progress.setRange(0, 100)
+        self.progress.setFixedHeight(8)
+        box.addWidget(self.progress)
+
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        self.progress_label = QLabel("0 із 0 пройдено")
+        self.progress_label.setObjectName("Subtle")
+        self.percent_label = QLabel("0%")
+        self.percent_label.setObjectName("Subtle")
+        row.addWidget(self.progress_label)
+        row.addStretch(1)
+        row.addWidget(self.percent_label)
+        box.addLayout(row)
+        return header
+
+    def _build_switch(self) -> QWidget:
+        holder = QWidget()
+        holder.setObjectName("Header")
+        row = QHBoxLayout(holder)
+        row.setContentsMargins(10, 6, 10, 8)
+        row.setSpacing(4)
+
+        self.nav_buttons: list[QToolButton] = []
+        for index, title in enumerate(("Шлях", "Повторення", "Прогрес")):
+            button = QToolButton()
+            button.setObjectName("NavButton")
+            button.setText(title)
+            button.setCheckable(True)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setChecked(index == 0)
+            button.clicked.connect(lambda _=False, i=index: self.set_mode(i))
+            row.addWidget(button)
+            self.nav_buttons.append(button)
+        return holder
+
+    # ---------- API ----------
+
+    def set_mode(self, index: int) -> None:
+        self.stack.setCurrentIndex(index)
+        for position, button in enumerate(self.nav_buttons):
+            button.setChecked(position == index)
+
+    def load_curriculum(self, months, statuses: dict[str, str]) -> None:
+        self.tree.load(months, statuses)
+
+    def mark(self, task_id: str, status: str) -> None:
+        self.tree.mark(task_id, status)
+
+    def select(self, task_id: str) -> None:
+        self.set_mode(0)
+        self.tree.select(task_id)
+
+    def set_progress(self, done: int, total: int) -> None:
+        percent = round(done * 100 / total) if total else 0
+        self.progress.setValue(percent)
+        self.progress_label.setText(f"{done} із {total} пройдено")
+        self.percent_label.setText(f"{percent}%")
+
+    def set_reviews(self, due_rows: list[dict], later_rows: list[dict]) -> None:
+        self.reviews.set_rows(due_rows, later_rows)
+        total = len(due_rows)
+        self.nav_buttons[1].setText(f"Повторення{' · ' + str(total) if total else ''}")
+        self.nav_buttons[1].setToolTip(
+            f"Час повторити: {total}" if total else "Черга повторень порожня"
+        )
+
+    def set_stats(self, overall: dict, weak: list, activity: dict[str, int],
+                  xp: int, streak: int) -> None:
+        self.stats.set_data(overall, weak, activity, xp, streak)
