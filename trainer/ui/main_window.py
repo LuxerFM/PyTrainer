@@ -17,9 +17,10 @@ import threading
 from datetime import date
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QKeySequence, QShortcut, QTextCursor
 from PySide6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -39,18 +40,35 @@ from curriculum.roadmap_md import write as write_roadmap
 
 from ..core import scoring
 from ..core.db import Database
+from ..core.plan import daily_plan
 from ..core.runner import RunResult, run_task
 from ..core.session import StudySession, StudyUpdate
 from ..core.stats import overall, weak_topics
+from ..paths import app_folder
 from .editor import CodeEditor
 from .sidebar import SideNav
-from .task_panel import TaskPanel
-from .theme import MONO_FONTS, Colors, pick_font
+from .task_panel import TAB_HINTS, TaskPanel
+from .theme import (MONO_FONTS, Colors, apply_theme, pick_font, scale, set_scale)
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = app_folder()
 ROADMAP_PATH = ROOT / "Python-Roadmap.md"
 PROGRESS_PATH = ROOT / "progress.json"
+SETTINGS_PATH = ROOT / "pytrainer.ini"
 TICK_SECONDS = 5
+
+
+def _human_when(iso: str) -> str:
+    """2026-09-25 → «сьогодні», «учора» або «25.09»."""
+    try:
+        target = date.fromisoformat(iso)
+    except ValueError:
+        return iso
+    delta = (date.today() - target).days
+    if delta == 0:
+        return "сьогодні"
+    if delta == 1:
+        return "учора"
+    return target.strftime("%d.%m")
 
 
 def _human_date(iso: str) -> str:
@@ -75,7 +93,8 @@ class MainWindow(QMainWindow):
 
     def __init__(self, db: Database | None = None,
                  roadmap_path: str | Path = ROADMAP_PATH,
-                 progress_path: str | Path = PROGRESS_PATH) -> None:
+                 progress_path: str | Path = PROGRESS_PATH,
+                 settings_path: str | Path | None = SETTINGS_PATH) -> None:
         super().__init__()
         self.setWindowTitle("PyTrainer — тренажер Python")
         self.resize(1480, 920)
@@ -85,11 +104,16 @@ class MainWindow(QMainWindow):
         self.session = StudySession(self.db)
         self.roadmap_path = Path(roadmap_path)
         self.progress_path = Path(progress_path)
+        self.settings = (
+            QSettings(str(settings_path), QSettings.Format.IniFormat)
+            if settings_path else None
+        )
 
         self._task = None
         self._running = False
         self._review_mode = False
         self._last_saved = ""
+        self._restored = False
 
         self.sidebar = SideNav()
         self.editor = CodeEditor()
@@ -107,6 +131,7 @@ class MainWindow(QMainWindow):
 
         start = first_unfinished(self.db.statuses()) or study_tasks()[0]
         self.open_task(start.id)
+        self._restore_state()
 
         self.timer = QTimer(self)
         self.timer.setInterval(TICK_SECONDS * 1000)
@@ -137,6 +162,8 @@ class MainWindow(QMainWindow):
         self._add_action(run_menu, "Очистити консоль", None, self.console.clear)
 
         study_menu = self.menuBar().addMenu("Навчання")
+        self._add_action(study_menu, "План на сьогодні", "Ctrl+L",
+                         lambda: self.sidebar.set_mode(3))
         self._add_action(study_menu, "На повторення", "Ctrl+R", lambda: self.sidebar.set_mode(1))
         self._add_action(study_menu, "Прогрес і слабкі місця", "Ctrl+P",
                          lambda: self.sidebar.set_mode(2))
@@ -149,6 +176,16 @@ class MainWindow(QMainWindow):
         study_menu.addSeparator()
         self._add_action(study_menu, "Скинути прогрес цієї задачі", None,
                          self.reset_task_progress)
+
+        view_menu = self.menuBar().addMenu("Вигляд")
+        self._add_action(view_menu, "Темна / світла тема", "Ctrl+D", self.toggle_theme)
+        view_menu.addSeparator()
+        self._add_action(view_menu, "Більший шрифт", "Ctrl++",
+                         lambda: self.change_font_scale(0.05))
+        self._add_action(view_menu, "Менший шрифт", "Ctrl+-",
+                         lambda: self.change_font_scale(-0.05))
+        self._add_action(view_menu, "Звичайний розмір шрифту", "Ctrl+0",
+                         self.reset_font_scale)
 
         help_menu = self.menuBar().addMenu("Довідка")
         self._add_action(help_menu, "Гарячі клавіші", "F1", self.show_shortcuts)
@@ -214,6 +251,7 @@ class MainWindow(QMainWindow):
         box.addWidget(self._editor_header())
 
         vertical = QSplitter(Qt.Orientation.Vertical)
+        vertical.setObjectName("editorSplitter")
         vertical.addWidget(self.editor)
         vertical.addWidget(self._console_box())
         vertical.setSizes([600, 250])
@@ -222,6 +260,7 @@ class MainWindow(QMainWindow):
         box.addWidget(vertical, 1)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setObjectName("mainSplitter")
         splitter.addWidget(self.sidebar)
         splitter.addWidget(center)
         splitter.addWidget(self.panel)
@@ -230,6 +269,9 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(1, 1)
         splitter.setStretchFactor(2, 0)
         self.setCentralWidget(splitter)
+
+        self.editor_splitter = vertical
+        self.main_splitter = splitter
 
     def _editor_header(self) -> QWidget:
         header = QWidget()
@@ -297,9 +339,11 @@ class MainWindow(QMainWindow):
 
     def _connect(self) -> None:
         self.sidebar.task_selected.connect(self.open_task)
+        self.sidebar.stats.topic_practice_requested.connect(self.practice_topic)
         self.panel.hint_revealed.connect(self._on_hint_revealed)
         self.panel.solution_use_requested.connect(self._use_solution)
         self.panel.manual_toggle_requested.connect(self.toggle_manual_done)
+        self.panel.jump_to_line_requested.connect(self.jump_to_line)
         self.editor.run_requested.connect(self.run_code_only)
         self.editor.cursorPositionChanged.connect(self._update_position)
         self.run_finished.connect(self._on_run_finished)
@@ -350,6 +394,7 @@ class MainWindow(QMainWindow):
             hints_used=hints_used,
             active_seconds=active,
             xp_preview=self.session.preview_xp(task),
+            position=self._task_position(task.id),
         )
         self._load_history(task.id)
 
@@ -468,7 +513,62 @@ class MainWindow(QMainWindow):
             self.stdin_label.setText("")
 
     def open_hints_tab(self) -> None:
-        self.panel.tabs.setCurrentIndex(2)
+        self.panel.tabs.setCurrentIndex(TAB_HINTS)
+
+    def jump_to_line(self, line: int) -> None:
+        """Ставить курсор на рядок, на який вказала помилка.
+
+        Шукати очима рядок 37 у файлі — саме та дрібниця, через яку новачок
+        кидає задачу. Тому картка з поясненням помилки має кнопку з номером.
+        """
+        if self._task is None or line <= 0:
+            return
+        block = self.editor.document().findBlockByNumber(line - 1)
+        if not block.isValid():
+            self.status_msg.setText(f"У файлі немає рядка {line}")
+            return
+
+        cursor = self.editor.textCursor()
+        cursor.setPosition(block.position())
+        cursor.movePosition(
+            QTextCursor.MoveOperation.EndOfBlock,
+            QTextCursor.MoveMode.KeepAnchor,
+        )
+        self.editor.setTextCursor(cursor)
+        self.editor.centerCursor()
+        self.editor.setFocus()
+        self.status_msg.setText(f"Рядок {line} — саме тут сталася помилка")
+
+    def practice_topic(self, topic_name: str) -> None:
+        """Відкриває задачу з теми, де статистика бачить провали.
+
+        Список слабких тем раніше лише повідомляв проблему — тепер з нього
+        можна одразу піти працювати.
+        """
+        statuses = self.db.statuses()
+        for task in study_tasks():
+            if topic_of(task.id) != topic_name:
+                continue
+            if statuses.get(task.id) == "done":
+                continue
+            self.open_task(task.id)
+            self.sidebar.select(task.id)
+            self.status_msg.setText(f"Тренуємо тему: {topic_name}")
+            return
+
+        self.sidebar.set_mode(0)
+        self.status_msg.setText(
+            f"У темі «{topic_name}» усі задачі здані — час на повторення"
+        )
+
+    @staticmethod
+    def _task_position(task_id: str) -> tuple[int, int] | None:
+        """«Задача 5 із 31» — щоб було видно, де ти на шляху."""
+        ready = study_tasks()
+        for index, task in enumerate(ready, start=1):
+            if task.id == task_id:
+                return index, len(ready)
+        return None
 
     # ==================================================================
     # запуск коду
@@ -519,6 +619,12 @@ class MainWindow(QMainWindow):
             self._log("(вивід порожній)", Colors.muted)
         if result.output_truncated:
             self._log("…вивід обрізано, щоб не з'їсти пам'ять", Colors.warn)
+
+        advice = result.advice
+        if advice:
+            self._log("", Colors.muted)
+            for line in advice.splitlines():
+                self._log(line, Colors.warn)
 
         self.panel.show_result(result, bool(result.ran_checks))
 
@@ -753,7 +859,36 @@ class MainWindow(QMainWindow):
         self.sidebar.load_curriculum(CURRICULUM, self.db.statuses())
         self._refresh_progress()
         self._refresh_reviews()
+        self._refresh_mistakes()
+        self._refresh_plan()
         self._refresh_stats()
+
+    def _refresh_mistakes(self) -> None:
+        """Журнал помилок: що саме не пройшло й скільки разів.
+
+        Показуємо лише помилки задач, які ще не здані: якщо задачу вже
+        розв'язано, ця помилка не «висить» — список має лишатися списком
+        того, що варто виправити, а не історією страждань.
+        """
+        rows = []
+        for row in self.db.mistakes():
+            task = find_task(row["task_id"])
+            if task is None or self.db.status(task.id) == "done":
+                continue
+            rows.append({
+                "task_id": task.id,
+                "title": task.title,
+                "kind": row["error_kind"],
+                "times": row["times"],
+                "when": _human_when(row["last_at"][:10]),
+                "tooltip": f'{row["failed_check"] or "перевірка"}\n'
+                           f'{task.level} · {task.base_xp} XP'
+                           "\n\nНатисни, щоб повернутися до задачі",
+            })
+        self.sidebar.set_mistakes(rows)
+
+    def _refresh_plan(self) -> None:
+        self.sidebar.set_plan(daily_plan(self.db))
 
     def _refresh_progress(self) -> None:
         self.sidebar.set_progress(self._done_count(), len(study_tasks()))
@@ -802,6 +937,7 @@ class MainWindow(QMainWindow):
             summary["xp"],
             summary["streak"],
             self.db.total_active_seconds(),
+            self.db.xp_by_day(),
         )
         self.xp_badge.setText(f'XP {summary["xp"]}')
         streak = summary["streak"]
@@ -865,9 +1001,13 @@ class MainWindow(QMainWindow):
             "Ctrl+Enter — запустити код\n"
             "F5 — перевірити прихованими тестами\n"
             "Ctrl+N — наступна незавершена задача\n"
+            "Ctrl+L — план на сьогодні\n"
             "Ctrl+R — черга повторень\n"
             "Ctrl+P — прогрес і слабкі місця\n"
             "Ctrl+F — пошук задачі\n"
+            "Ctrl+D — темна / світла тема\n"
+            "Ctrl++ / Ctrl+- / Ctrl+0 — розмір шрифту\n"
+            "Вкладка «Довідка» — шпаргалка з теми задачі\n"
             "Tab / Shift+Tab — відступ / зменшити відступ\n"
             "Ctrl+S — зберегти код у файл\n"
             "F1 — ця довідка",
@@ -882,12 +1022,108 @@ class MainWindow(QMainWindow):
             "зашкодять програмі.\n\n"
             "Прогрес, XP, підказки й черга повторень зберігаються в SQLite "
             f"({Path(self.db.path).name}), а Python-Roadmap.md і progress.json "
-            "оновлюються самі.",
+            "оновлюються самі.\n\n"
+            "Розміри вікон, тема, масштаб шрифту й остання задача "
+            "запам'ятовуються між запусками (pytrainer.ini).",
         )
 
     def closeEvent(self, event) -> None:  # noqa: N802
+        # Зупиняємо таймер ПЕРШИМ: він ходить у базу кожні кілька секунд, а
+        # базу ми зараз закриємо.
+        self.timer.stop()
         self._save_current_code()
+        self._save_state()
         self.rewrite_roadmap(silent=True)
         self._write_progress(silent=True)
         self.db.close()
         super().closeEvent(event)
+
+    # ==================================================================
+    # стан вікна, тема, масштаб шрифту
+    # ==================================================================
+
+    def _save_state(self) -> None:
+        """Запам'ятовує геометрію, сплітери, тему й останню задачу.
+
+        Без цього кожен запуск починається з нуля: доводиться заново
+        розсувати панелі та згадувати, на чому зупинився.
+        """
+        if self.settings is None:
+            return
+        self.settings.setValue("window/geometry", self.saveGeometry())
+        self.settings.setValue("window/state", self.saveState())
+        self.settings.setValue("window/mainSplitter", self.main_splitter.saveState())
+        self.settings.setValue("window/editorSplitter", self.editor_splitter.saveState())
+        self.settings.setValue("view/theme", Colors.name)
+        self.settings.setValue("view/scale", scale())
+        self.settings.setValue("view/sidebarMode", self.sidebar.stack.currentIndex())
+        self.settings.setValue("view/panelTab", self.panel.tabs.currentIndex())
+        self.settings.setValue("study/taskId", self._task.id if self._task else "")
+        self.settings.sync()
+
+    def _restore_state(self) -> None:
+        """Повертає те, що було при закритті: розміри, тему, задачу."""
+        if self.settings is None:
+            return
+
+        geometry = self.settings.value("window/geometry")
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+        for key, splitter in (("window/mainSplitter", self.main_splitter),
+                              ("window/editorSplitter", self.editor_splitter)):
+            saved = self.settings.value(key)
+            if saved is not None:
+                splitter.restoreState(saved)
+
+        set_scale(self._float_setting("view/scale", 1.0))
+        Colors.use(str(self.settings.value("view/theme", "dark")))
+        self._retheme()
+
+        self.sidebar.set_mode(int(self._float_setting("view/sidebarMode", 0)))
+
+        task_id = str(self.settings.value("study/taskId", "") or "")
+        if task_id and find_task(task_id) is not None:
+            self.open_task(task_id)
+        self.panel.tabs.setCurrentIndex(int(self._float_setting("view/panelTab", 0)))
+
+    def _float_setting(self, key: str, fallback: float) -> float:
+        """QSettings повертає рядки — перетворюємо й не падаємо на смітті."""
+        try:
+            return float(self.settings.value(key, fallback))
+        except (TypeError, ValueError):
+            return fallback
+
+    def _retheme(self) -> None:
+        """Перемальовує все після зміни теми або масштабу.
+
+        QSS застосовується до віджетів сам, але HTML-сторінки (умова,
+        довідка, статистика) мають кольори прямо в тексті — тому їх треба
+        згенерувати заново, інакше вони лишаться зі старої теми.
+        """
+        apply_theme(QApplication.instance(), Colors.name)
+        self.editor.apply_theme()
+        self._refresh_all()
+        if self._task is not None:
+            self.open_task(self._task.id)
+
+    def toggle_theme(self) -> None:
+        """Ctrl+D — темна ⇄ світла."""
+        Colors.use("light" if Colors.name == "dark" else "dark")
+        self._retheme()
+        self._save_state()
+        self.statusBar().showMessage(
+            f"Тема: {'світла' if Colors.name == 'light' else 'темна'}", 2500
+        )
+
+    def change_font_scale(self, delta: float) -> None:
+        """Ctrl+= / Ctrl+- — більший або менший текст у всьому вікні."""
+        set_scale(scale() + delta)
+        self._retheme()
+        self._save_state()
+        self.statusBar().showMessage(f"Масштаб шрифту: {round(scale() * 100)}%", 2500)
+
+    def reset_font_scale(self) -> None:
+        set_scale(1.0)
+        self._retheme()
+        self._save_state()
+        self.statusBar().showMessage("Масштаб шрифту: 100%", 2500)

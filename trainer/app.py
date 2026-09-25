@@ -11,6 +11,10 @@
     ... --screenshot screenshots/main.png --demo
     ... --screenshot progress.png --view progress --demo
     ... --screenshot checks.png --task w2-list --solution --run-checks --demo
+
+Можна вказати тему й масштаб тексту прямо в командному рядку:
+    python main.py --theme light
+    python main.py --scale 1.2
 """
 
 from __future__ import annotations
@@ -31,9 +35,12 @@ PySide6 не знайдено у поточному Python.
     .venv\\Scripts\\python.exe -m pip install -r requirements.txt
 """
 
-ROOT = Path(__file__).resolve().parents[1]
-ICON_PATH = ROOT / "assets" / "icon.png"
-VIEWS = {"roadmap": 0, "reviews": 1, "progress": 2}
+# Іконка лежить усередині застосунку, тому беремо її через `resource()`:
+# у зібраному .exe це тека розпакування, а не корінь проєкту.
+from .paths import resource  # noqa: E402
+
+ICON_PATH = resource("assets", "icon.png")
+VIEWS = {"roadmap": 0, "reviews": 1, "progress": 2, "plan": 3}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -47,7 +54,7 @@ def main(argv: list[str] | None = None) -> int:
         print(HELP)
         return 1
 
-    from .core.db import Database
+    from .core.db import Database, backup_database
     from .ui.main_window import MainWindow
     from .ui.theme import apply_theme
 
@@ -56,11 +63,20 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationDisplayName("PyTrainer")
     if ICON_PATH.exists():
         app.setWindowIcon(QIcon(str(ICON_PATH)))
-    apply_theme(app)
+
+    if "--scale" in argv:
+        from .ui.theme import set_scale
+
+        set_scale(float(argv[argv.index("--scale") + 1]))
+    theme = argv[argv.index("--theme") + 1] if "--theme" in argv else None
+    apply_theme(app, theme)
 
     if "--demo" in argv:
         window = _demo_window(Database)
     else:
+        # Тиха копія бази перед роботою: прогрес за місяці не має залежати
+        # від одного файлу.
+        backup_database()
         window = MainWindow()
     window.show()
 
@@ -99,4 +115,5 @@ def _demo_window(database) -> "MainWindow":
         db=db,
         roadmap_path=folder / "Python-Roadmap.md",
         progress_path=folder / "progress.json",
+        settings_path=None,        # демо не має пам'ятати стан справжнього застосунку
     )

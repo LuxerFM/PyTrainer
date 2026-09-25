@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .plan_page import PlanPage
 from .review_page import ReviewPage
 from .stats_page import StatsPage
 from .theme import Colors, truncate
@@ -174,6 +175,7 @@ class SideNav(QWidget):
         self.tree = RoadmapTree()
         self.reviews = ReviewPage()
         self.stats = StatsPage()
+        self.plan = PlanPage()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -185,10 +187,12 @@ class SideNav(QWidget):
         self.stack.addWidget(self._build_roadmap_page())
         self.stack.addWidget(self.reviews)
         self.stack.addWidget(self.stats)
+        self.stack.addWidget(self.plan)
         layout.addWidget(self.stack, 1)
 
         self.tree.task_selected.connect(self.task_selected.emit)
         self.reviews.task_selected.connect(self.task_selected.emit)
+        self.plan.task_selected.connect(self.task_selected.emit)
 
     # ---------- шапка ----------
 
@@ -266,11 +270,21 @@ class SideNav(QWidget):
         row.setContentsMargins(10, 6, 10, 8)
         row.setSpacing(4)
 
+        # Підписи короткі навмисно: чотири кнопки у вузькому сайдбарі — і
+        # довгі слова Qt обрізає многоточієм («Повторення» → «Повто...»).
+        # Повну назву видно в підказці при наведенні.
+        modes = (
+            ("Шлях", "План від нуля до перших грошей"),
+            ("Повтор", "Черга повторень: що час згадати"),
+            ("Прогрес", "Скільки здано, XP, серія днів, слабкі місця"),
+            ("План", "Що робити сьогодні — готовий план на вечір"),
+        )
         self.nav_buttons: list[QToolButton] = []
-        for index, title in enumerate(("Шлях", "Повторення", "Прогрес")):
+        for index, (title, tip) in enumerate(modes):
             button = QToolButton()
             button.setObjectName("NavButton")
             button.setText(title)
+            button.setToolTip(tip)
             button.setCheckable(True)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setChecked(index == 0)
@@ -326,5 +340,21 @@ class SideNav(QWidget):
         )
 
     def set_stats(self, overall: dict, weak: list, activity: dict[str, int],
-                  xp: int, streak: int, active_seconds: float = 0.0) -> None:
-        self.stats.set_data(overall, weak, activity, xp, streak, active_seconds)
+                  xp: int, streak: int, active_seconds: float = 0.0,
+                  xp_by_day: dict[str, int] | None = None) -> None:
+        self.stats.set_data(overall, weak, activity, xp, streak, active_seconds,
+                            xp_by_day)
+
+    def set_plan(self, plan) -> None:
+        self.plan.set_plan(plan)
+        self.nav_buttons[3].setToolTip(
+            f"План на сьогодні: {len(plan.steps)} кроків, ≈{plan.minutes} хв"
+            if not plan.empty else "План на сьогодні порожній"
+        )
+
+    def set_mistakes(self, rows: list[dict]) -> None:
+        self.reviews.set_mistakes(rows)
+        self.nav_buttons[1].setToolTip(
+            f"Повторень: {self.reviews.today_list.count()} · "
+            f"помилок у журналі: {len(rows)}"
+        )

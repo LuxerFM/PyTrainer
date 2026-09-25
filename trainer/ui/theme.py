@@ -1,17 +1,23 @@
-"""Темна тема застосунку: палітра, шрифти і таблиця стилів (QSS).
+"""Тема застосунку: палітри (темна й світла), шрифти і таблиця стилів (QSS).
 
-Всі кольори зібрані в одному класі `Colors`. Якщо захочеться світлу тему —
-достатньо зробити другий такий клас і викликати apply_theme(app, інша_палітра).
+Увесь інтерфейс звертається до кольорів через `Colors.accent`, `Colors.muted`
+тощо. За цим ім'ям стоїть не клас, а «перемикач» активної палітри — тому
+перемикання теми не вимагає жодних змін у віджетах: вони читають ті самі
+атрибути й отримують уже нові кольори.
+
+Тут же живе масштаб шрифту (`set_scale`): розміри в QSS задані в пікселях, і
+під час збирання таблиці стилів ми множимо їх на поточний коефіцієнт.
 """
 
+import re
 from string import Template
 
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
 from PySide6.QtWidgets import QApplication
 
 
-class Colors:
-    """Палітра темної теми (назви як у VS Code, кольори — власні)."""
+class DarkPalette:
+    """Темна тема (назви як у VS Code, кольори — власні)."""
 
     bg = "#101216"          # фон вікна
     panel = "#161922"       # панелі (сайдбар, панель задач)
@@ -19,9 +25,11 @@ class Colors:
     border = "#272b36"      # лінії розділювачів
     text = "#dfe3ea"        # основний текст
     muted = "#8a92a3"       # другорядний текст
+    strong = "#ffffff"      # текст, який має «виступати» (жирне в умові)
     accent = "#4c8dff"      # акцент (кнопки, прогрес)
     accent_hover = "#6ba1ff"
     accent_press = "#3d76d9"
+    on_accent = "#0b1220"   # текст на акцентній кнопці
     selection = "#2b3a55"   # виділення
     editor_bg = "#0c0e13"   # фон редактора
     gutter_bg = "#0a0c10"   # фон смуги з номерами рядків
@@ -42,11 +50,91 @@ class Colors:
     syn_decorator = "#7fd1c0"
 
 
+class LightPalette:
+    """Світла тема: та сама структура, інші кольори.
+
+    Кольори підсвітки синтаксису тут темніші: на білому фоні світлі
+    відтінки з темної теми просто не читаються.
+    """
+
+    bg = "#f3f5f9"
+    panel = "#e9edf4"
+    elevated = "#ffffff"
+    border = "#d2d8e4"
+    text = "#1d222c"
+    muted = "#5c6574"
+    strong = "#000000"
+    accent = "#2f6fe4"
+    accent_hover = "#2a63cd"
+    accent_press = "#2456b3"
+    on_accent = "#ffffff"
+    selection = "#cfe0ff"
+    editor_bg = "#ffffff"
+    gutter_bg = "#f5f6fa"
+    scroll = "#c4cbd9"
+    scroll_hover = "#a9b2c4"
+    success = "#187f52"
+    error = "#c23333"
+    warn = "#9a6208"
+
+    syn_keyword = "#c2185b"
+    syn_builtin = "#0b62a4"
+    syn_self = "#9a6208"
+    syn_string = "#2f7d32"
+    syn_comment = "#78818f"
+    syn_number = "#6b3fc4"
+    syn_func = "#7a5c00"
+    syn_decorator = "#0f7f74"
+
+
+PALETTES = {"dark": DarkPalette, "light": LightPalette}
+
+
+class _ActivePalette:
+    """Об'єкт, читання атрибутів якого йде до активної палітри.
+
+    Саме тому в усьому коді можна писати `Colors.accent`, не думаючи про тему.
+    """
+
+    def __init__(self) -> None:
+        self._palette = DarkPalette
+
+    def use(self, name: str) -> None:
+        self._palette = PALETTES.get(name, DarkPalette)
+
+    @property
+    def name(self) -> str:
+        """Назва активної теми: "dark" або "light"."""
+        return "light" if self._palette is LightPalette else "dark"
+
+    def __getattr__(self, item: str) -> str:
+        return getattr(self._palette, item)
+
+
+Colors = _ActivePalette()
+
+
+def palette_vars() -> dict[str, str]:
+    """Кольори активної палітри — для підстановки в QSS."""
+    return {
+        key: value
+        for key, value in vars(Colors._palette).items()  # noqa: SLF001 — навмисно
+        if not key.startswith("_") and isinstance(value, str)
+    }
+
+
 # Шрифти пробуємо по порядку — беремо перший, який є в системі.
 MONO_FONTS = ("Cascadia Mono", "JetBrains Mono", "Consolas", "Menlo",
               "DejaVu Sans Mono", "Courier New")
 UI_FONTS = ("Segoe UI Variable Text", "Segoe UI", "Inter", "Noto Sans",
             "Helvetica Neue", "DejaVu Sans")
+
+# Текст умов задач і підказок читають довше, ніж підписи в інтерфейсі, тому
+# для нього окремий, трохи «спокійніший» список: довгі засічки тут заважають.
+PROSE_FONTS = ("Segoe UI Variable Text", "Segoe UI", "Inter", "Noto Sans",
+               "Noto Sans Display", "Helvetica Neue", "DejaVu Sans")
+
+_FAMILY_CACHE: dict[tuple[str, ...], str] = {}
 
 
 def pick_font(candidates: tuple[str, ...], size: int) -> QFont:
@@ -56,6 +144,70 @@ def pick_font(candidates: tuple[str, ...], size: int) -> QFont:
         if name in available:
             return QFont(name, size)
     return QFont(candidates[-1], size)
+
+
+def family_name(candidates: tuple[str, ...]) -> str:
+    """Назва першого доступного шрифта — щоб вставити в HTML/CSS.
+
+    Потрібно для `QTextBrowser`: там стилі задаються текстом, а не QFont.
+    Результат кешуємо: QFontDatabase.families() — не найдешевша операція.
+    """
+    cached = _FAMILY_CACHE.get(candidates)
+    if cached is not None:
+        return cached
+
+    available = set(QFontDatabase.families())
+    for name in candidates:
+        if name in available:
+            _FAMILY_CACHE[candidates] = name
+            return name
+    _FAMILY_CACHE[candidates] = candidates[-1]
+    return candidates[-1]
+
+
+def prose_family() -> str:
+    """Сімейство шрифта для умов, підказок і шпаргалок."""
+    return family_name(PROSE_FONTS)
+
+
+def mono_family() -> str:
+    """Сімейство моноширинного шрифта для коду в текстах."""
+    return family_name(MONO_FONTS)
+
+
+# --------------------------------------------------------------------------
+# масштаб шрифту
+# --------------------------------------------------------------------------
+
+_SCALE = 1.0
+MIN_SCALE, MAX_SCALE = 0.85, 1.6
+
+
+def set_scale(value: float) -> float:
+    """Задає масштаб шрифту (з обмеженням) і повертає те, що вийшло."""
+    global _SCALE
+    _SCALE = max(MIN_SCALE, min(MAX_SCALE, round(value, 2)))
+    return _SCALE
+
+
+def scale() -> float:
+    return _SCALE
+
+
+def ui_size(base: int) -> int:
+    """Розмір шрифту з урахуванням масштабу — для QFont і HTML."""
+    return max(8, round(base * _SCALE))
+
+
+def scaled_qss(text: str) -> str:
+    """Множить усі `font-size: Npx` у таблиці стилів на поточний масштаб."""
+    if _SCALE == 1.0:
+        return text
+    return re.sub(
+        r"font-size:\s*(\d+)px",
+        lambda match: f"font-size: {ui_size(int(match.group(1)))}px",
+        text,
+    )
 
 
 def truncate(text: str, length: int = 58) -> str:
@@ -122,7 +274,7 @@ QToolBar QToolButton:disabled { color: $muted; }
 
 QToolButton#Primary {
     background-color: $accent;
-    color: #0b1220;
+    color: $on_accent;
     border: none;
     font-weight: 700;
 }
@@ -136,6 +288,8 @@ QWidget#Header { background-color: $panel; border-bottom: 1px solid $border; }
 QLabel#Brand { font-size: 16px; font-weight: 700; }
 QLabel#BrandAccent { color: $accent; font-size: 16px; font-weight: 700; }
 QLabel#Subtle { color: $muted; font-size: 12px; }
+QLabel#Meta { color: $muted; font-size: 12px; }
+QLabel#Source { color: $muted; font-size: 11px; }
 QLabel#SectionTitle {
     color: $muted;
     font-size: 11px;
@@ -155,6 +309,34 @@ QLabel#BadgeAccent { color: $accent; background-color: $elevated;
     border: 1px solid $border; border-radius: 11px; padding: 4px 11px;
     font-weight: 700; }
 QLabel#TaskTitle { font-size: 15px; font-weight: 700; }
+
+/* ---------- картки перевірок («Тести») ---------- */
+QLabel#CheckName { font-weight: 600; font-size: 13px; }
+QLabel#CheckMark { font-size: 14px; font-weight: 700; }
+QLabel#CheckDetail { color: $muted; font-size: 12px; }
+QLabel#CheckError { color: $error; font-size: 12px; }
+QLabel#CheckOk { color: $success; font-size: 12px; }
+QLabel#VerdictOk {
+    color: $success; font-weight: 700; font-size: 13px;
+    background-color: $elevated; border: 1px solid $border;
+    border-left: 3px solid $success; border-radius: 8px; padding: 9px 12px;
+}
+QLabel#VerdictBad {
+    color: $error; font-weight: 700; font-size: 13px;
+    background-color: $elevated; border: 1px solid $border;
+    border-left: 3px solid $error; border-radius: 8px; padding: 9px 12px;
+}
+QLabel#VerdictWarn {
+    color: $warn; font-weight: 700; font-size: 13px;
+    background-color: $elevated; border: 1px solid $border;
+    border-left: 3px solid $warn; border-radius: 8px; padding: 9px 12px;
+}
+QLabel#Advice {
+    color: $text; font-size: 12px;
+    background-color: $editor_bg; border: 1px solid $border;
+    border-left: 3px solid $warn; border-radius: 8px; padding: 10px 12px;
+}
+QLabel#HintTitle { font-weight: 600; font-size: 13px; }
 
 /* ---------- дерево роадмапу ---------- */
 QTreeWidget {
@@ -184,18 +366,45 @@ QTextEdit#Console {
     color: $text;
 }
 QTextBrowser { background: transparent; border: none; }
+QTextBrowser#Statement {
+    background-color: $panel;
+    selection-background-color: $selection;
+}
+QTextBrowser#CheatSheet { background-color: $panel; }
+QScrollArea#ChecksPage { background: transparent; border: none; }
 
 /* ---------- вкладки ---------- */
 QTabWidget::pane { border: none; top: -1px; }
 QTabBar::tab {
     background: transparent;
     color: $muted;
-    padding: 9px 14px;
+    padding: 9px 11px;
     border-bottom: 2px solid transparent;
     font-weight: 600;
 }
 QTabBar::tab:hover { color: $text; }
 QTabBar::tab:selected { color: $text; border-bottom: 2px solid $accent; }
+
+/* ---------- випадний список (довідка) ---------- */
+QComboBox {
+    background-color: $elevated;
+    border: 1px solid $border;
+    border-radius: 8px;
+    padding: 6px 10px;
+    color: $text;
+    font-weight: 600;
+}
+QComboBox:hover { border-color: $accent; }
+QComboBox::drop-down { border: none; width: 22px; }
+QComboBox QAbstractItemView {
+    background-color: $elevated;
+    border: 1px solid $border;
+    selection-background-color: $selection;
+    selection-color: $text;
+    color: $text;
+    outline: none;
+    padding: 4px;
+}
 
 /* ---------- списки та прокрутка ---------- */
 QListWidget { background: transparent; border: none; outline: none; }
@@ -240,7 +449,7 @@ QToolButton#NavButton {
     background: transparent;
     border: 1px solid transparent;
     border-radius: 8px;
-    padding: 6px 10px;
+    padding: 6px 7px;
     color: $muted;
     font-weight: 600;
 }
@@ -272,11 +481,17 @@ QPushButton#Ghost:disabled { color: $muted; }
 )
 
 
-def apply_theme(app: QApplication) -> None:
-    """Застосовує темну тему до всього застосунку."""
+def apply_theme(app: QApplication, theme: str | None = None) -> None:
+    """Застосовує тему й масштаб шрифту до всього застосунку.
+
+    theme="dark" / "light" перемикає палітру; None — лишає поточну.
+    """
+    if theme:
+        Colors.use(theme)
+
     # Fusion поводиться однаково на Windows/Linux/macOS — потрібно для стабільності.
     app.setStyle("Fusion")
-    app.setFont(pick_font(UI_FONTS, 10))
+    app.setFont(pick_font(UI_FONTS, ui_size(10)))
 
     palette = QPalette()
     palette.setColor(QPalette.ColorRole.Window, QColor(Colors.bg))
@@ -287,6 +502,9 @@ def apply_theme(app: QApplication) -> None:
     palette.setColor(QPalette.ColorRole.HighlightedText, QColor(Colors.text))
     palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(Colors.elevated))
     palette.setColor(QPalette.ColorRole.ToolTipText, QColor(Colors.text))
+    palette.setColor(QPalette.ColorRole.Button, QColor(Colors.elevated))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor(Colors.text))
+    palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(Colors.muted))
     app.setPalette(palette)
 
-    app.setStyleSheet(QSS.substitute(vars(Colors)))
+    app.setStyleSheet(scaled_qss(QSS.substitute(palette_vars())))

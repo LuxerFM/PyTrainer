@@ -44,6 +44,9 @@ class ReviewPage(QWidget):
         self.today_title.setObjectName("SectionTitle")
         box.addWidget(self.today_title)
 
+        self._has_reviews = False
+        self._has_mistakes = False
+
         self.today_list = self._build_list()
         box.addWidget(self.today_list, 1)
 
@@ -59,6 +62,22 @@ class ReviewPage(QWidget):
         self.empty_label.setWordWrap(True)
         box.addWidget(self.empty_label)
 
+        # --- журнал помилок: те, на чому саме ти спіткнувся ---
+        self.mistakes_title = QLabel("ТВОЇ ПОМИЛКИ")
+        self.mistakes_title.setObjectName("SectionTitle")
+        box.addWidget(self.mistakes_title)
+
+        self.mistakes_note = QLabel(
+            "Помилка, на якій спіткнувся, — найкорисніше, що є в цьому "
+            "тренажері. Натисни, щоб повернутися до задачі."
+        )
+        self.mistakes_note.setObjectName("Subtle")
+        self.mistakes_note.setWordWrap(True)
+        box.addWidget(self.mistakes_note)
+
+        self.mistakes_list = self._build_list()
+        box.addWidget(self.mistakes_list, 1)
+
     def _build_list(self) -> QListWidget:
         widget = QListWidget()
         widget.setWordWrap(True)
@@ -71,9 +90,14 @@ class ReviewPage(QWidget):
         self._fill(self.today_list, due_rows, overdue=True)
         self._fill(self.later_list, later_rows)
 
-        self.empty_label.setVisible(not due_rows and not later_rows)
+        self._has_reviews = bool(due_rows or later_rows)
+        self._refresh_empty()
         self.today_title.setVisible(bool(due_rows))
         self.later_title.setVisible(bool(later_rows))
+
+    def _refresh_empty(self) -> None:
+        """Порожній підказці місце лише тоді, коли порожні обидва списки."""
+        self.empty_label.setVisible(not self._has_reviews and not self._has_mistakes)
 
     def _fill(self, widget: QListWidget, rows: list[dict], overdue: bool = False) -> None:
         widget.clear()
@@ -90,3 +114,25 @@ class ReviewPage(QWidget):
         task_id = item.data(Qt.ItemDataRole.UserRole)
         if task_id:
             self.task_selected.emit(task_id)
+
+    # ---------- журнал помилок ----------
+
+    def set_mistakes(self, rows: list[dict]) -> None:
+        """Останні помилки: текст помилки, скільки разів і коли."""
+        self.mistakes_list.clear()
+        for row in rows:
+            item = QListWidgetItem(
+                f'{row["title"]}\n'
+                f'{row["kind"]} · {row["times"]}× · {row["when"]}'
+            )
+            item.setData(Qt.ItemDataRole.UserRole, row["task_id"])
+            item.setForeground(QColor(Colors.error))
+            item.setToolTip(row.get("tooltip", ""))
+            self.mistakes_list.addItem(item)
+
+        visible = bool(rows)
+        self.mistakes_list.setVisible(visible)
+        self.mistakes_note.setVisible(visible)
+        self.mistakes_title.setVisible(visible)
+        self._has_mistakes = visible
+        self._refresh_empty()

@@ -10,7 +10,7 @@ from PySide6.QtGui import QColor, QFontMetricsF, QPainter, QTextFormat
 from PySide6.QtWidgets import QPlainTextEdit, QTextEdit, QWidget
 
 from .highlighter import PythonHighlighter
-from .theme import MONO_FONTS, Colors, pick_font
+from .theme import MONO_FONTS, Colors, pick_font, ui_size
 
 INDENT = " " * 4
 
@@ -40,7 +40,7 @@ class CodeEditor(QPlainTextEdit):
         self.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.setCursorWidth(2)
 
-        font = pick_font(MONO_FONTS, 11)
+        font = pick_font(MONO_FONTS, ui_size(11))
         self.setFont(font)
         self.setTabStopDistance(QFontMetricsF(font).horizontalAdvance(" ") * 4)
 
@@ -50,6 +50,22 @@ class CodeEditor(QPlainTextEdit):
         self.blockCountChanged.connect(self._refresh_gutter_width)
         self.updateRequest.connect(self._refresh_gutter)
         self.cursorPositionChanged.connect(self._highlight_current_line)
+        self._refresh_gutter_width()
+        self._highlight_current_line()
+
+    def apply_theme(self) -> None:
+        """Перечитує шрифт і кольори підсвітки.
+
+        Потрібно після зміни теми або масштабу: кольори синтаксису зберігає
+        не QSS, а сам підсвічувач, тому його треба створити заново.
+        """
+        font = pick_font(MONO_FONTS, ui_size(11))
+        self.setFont(font)
+        self.setTabStopDistance(QFontMetricsF(font).horizontalAdvance(" ") * 4)
+
+        self._highlighter.setDocument(None)      # відв'язуємо старий
+        self._highlighter = PythonHighlighter(self.document())
+        self._highlighter.rehighlight()
         self._refresh_gutter_width()
         self._highlight_current_line()
 

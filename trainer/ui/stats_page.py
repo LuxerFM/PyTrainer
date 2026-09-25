@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPainter
+from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -75,8 +75,66 @@ class ActivityGrid(QWidget):
         painter.end()
 
 
+class XpChart(QWidget):
+    """Стовпчики XP по днях: видно не лише «скільки всього», а й темп.
+
+    Календар активності показує, що ти займався. Цей графік — наскільки
+    продуктивно: два дні по 10 запусків на легких задачах і два дні над
+    одною складною виглядають зовсім по-різному.
+    """
+
+    DAYS = 28
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._by_day: dict[str, int] = {}
+        self.setMinimumHeight(64)
+
+    def set_data(self, by_day: dict[str, int]) -> None:
+        self._by_day = by_day
+        self.update()
+
+    def _days(self) -> list[tuple[str, int]]:
+        today = date.today()
+        return [
+            ((today - timedelta(days=offset)).isoformat(),
+             self._by_day.get((today - timedelta(days=offset)).isoformat(), 0))
+            for offset in range(self.DAYS - 1, -1, -1)
+        ]
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        days = self._days()
+        peak = max((value for _, value in days), default=0)
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+
+        width = self.width()
+        gap = 3
+        bar = max(2.0, (width - gap * (len(days) - 1)) / len(days))
+        baseline = self.height()
+
+        for index, (_, value) in enumerate(days):
+            height = 0.0 if not peak else max(2.0, (value / peak) * (self.height() - 6))
+            colour = Colors.accent if value else Colors.elevated
+            if value and peak and value < peak * 0.4:
+                colour = "#3f74c9"      # середній темп — окремий відтінок
+            painter.setBrush(QColor(colour))
+            painter.drawRoundedRect(
+                QRectF(index * (bar + gap), baseline - height, bar, height), 2, 2
+            )
+
+        if peak:
+            painter.setPen(QPen(QColor(Colors.muted)))
+            painter.drawText(0, 10, f"найкращий день: {peak} XP")
+        painter.end()
+
+
 class StatsPage(QWidget):
     """Картки + слабкі теми + календар."""
+
+    topic_practice_requested = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -107,7 +165,16 @@ class StatsPage(QWidget):
 
         self.weak_list = QListWidget()
         self.weak_list.setWordWrap(True)
+        self.weak_list.itemClicked.connect(self._on_weak_clicked)
         box.addWidget(self.weak_list, 1)
+
+        self.weak_note = QLabel(
+            "Натисни на тему — тренажер відкриє задачу, на якій її можна "
+            "підтягнути."
+        )
+        self.weak_note.setObjectName("Subtle")
+        self.weak_note.setWordWrap(True)
+        box.addWidget(self.weak_note)
 
         self.weak_empty = QLabel(
             "Поки що все рівно. Слабкі теми з'являться, коли буде кілька провалів — "
@@ -116,6 +183,13 @@ class StatsPage(QWidget):
         self.weak_empty.setObjectName("Subtle")
         self.weak_empty.setWordWrap(True)
         box.addWidget(self.weak_empty)
+
+        xp_title = QLabel("XP ЗА 4 ТИЖНІ")
+        xp_title.setObjectName("SectionTitle")
+        box.addWidget(xp_title)
+
+        self.xp_chart = XpChart()
+        box.addWidget(self.xp_chart)
 
         activity_title = QLabel("АКТИВНІСТЬ · 8 ТИЖНІВ")
         activity_title.setObjectName("SectionTitle")
@@ -144,7 +218,8 @@ class StatsPage(QWidget):
         return value_label, frame
 
     def set_data(self, overall: dict, weak: list, activity: dict[str, int],
-                 xp: int, streak: int, active_seconds: float = 0.0) -> None:
+                 xp: int, streak: int, active_seconds: float = 0.0,
+                 xp_by_day: dict[str, int] | None = None) -> None:
         self.cards["done"].setText(
             f'{overall.get("done", 0)}/{overall.get("total", 0)}'
         )
@@ -162,9 +237,18 @@ class StatsPage(QWidget):
                 f"успішних спроб {round(stat.success_rate * 100)}% "
                 f"({stat.passes} із {stat.attempts}) · здано {stat.done}/{stat.total}"
             )
+            item.setData(Qt.ItemDataRole.UserRole, stat.name)
             item.setForeground(QColor(Colors.warn))
+            item.setToolTip("Натисни, щоб тренувати цю тему")
             self.weak_list.addItem(item)
         self.weak_list.setVisible(bool(weak))
+        self.weak_note.setVisible(bool(weak))
         self.weak_empty.setVisible(not weak)
 
         self.activity.set_activity(activity)
+        self.xp_chart.set_data(xp_by_day or {})
+
+    def _on_weak_clicked(self, item: QListWidgetItem) -> None:
+        name = item.data(Qt.ItemDataRole.UserRole)
+        if name:
+            self.topic_practice_requested.emit(name)
