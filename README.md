@@ -37,18 +37,34 @@
 
 | | |
 |---|---|
-| 🧭 **Шлях на 9 місяців** | 5 блоків (місяць 1 → 7–9), 70 задач, з них 31 готова до розв'язання. План живе в коді (`curriculum/`) і оновлює `Python-Roadmap.md` сам |
+| 🧭 **Шлях на 9 місяців** | 5 блоків (місяць 1 → 7–9), 88 задач, з них 60 уже можна розв'язувати. План живе в коді (`curriculum/`) і оновлює `Python-Roadmap.md` сам |
+| 🏆 **Задачі з LeetCode і Codewars** | 14 задач рівня 7 kyu – medium у міні-блоці місяців 3–4. Умови переказані українською, у кожної вказано джерело й посилання на оригінал |
 | ✍️ **Редактор коду** | Номери рядків, підсвітка синтаксису, автовідступ після `:`, Tab = 4 пробіли, `Ctrl+Enter` |
 | ✅ **Чесна перевірка** | Окремий процес, таймаут 5 с, ліміт виводу, фікстури `input()`, задачі з кількох файлів зі справжнім `import` |
+| 🔎 **Що перевірять — видно заздалегідь** | До запуску вкладка «Тести» показує список перевірок і що саме вони вимагають; код тестів лишається прихованим |
+| 🩺 **Помилки — людською мовою** | `NameError`, `TypeError`, `IndentationError` та ще 20 типів розжовані українською: що це означає, у якому рядку і що зробити |
+| 📖 **Міні-довідка з теми** | Вкладка «Довідка» сама підбирає шпаргалку під задачу: рядки, списки, словники, цикли, алгоритми, файли, JSON, SQLite, Git |
 | 💡 **Підказки без спойлерів** | «де шукати» → «яка конструкція» → розв'язок за таймером |
 | 🔁 **Повторення 1/3/7/30** | Завалені й «підглянуті» задачі повертаються; після четвертого повторення задача утримана |
 | 📈 **Прогрес і слабкі місця** | XP, серія днів, відсоток успішних спроб, топ тем, де провалюєшся, календар активності на 8 тижнів |
-| 💾 **Нічого не губиться** | Код автозберігається, прогрес — у SQLite, його можна експортувати в `progress.json` і перенести на інший комп'ютер |
+| 💾 **Нічого не губиться** | Код автозберігається, прогрес — у SQLite, а перед кожним запуском робиться копія бази (`backups/`, 7 останніх), а `progress.json` можна експортувати й перенести на інший комп'ютер |
+| 🎨 **Під очі й під настрій** | Темна й світла тема (`Ctrl+D`), масштаб тексту (меню «Вигляд»), вікно відкривається там, де ти його закрив |
+| 📦 **Працює без Python** | `PyInstaller` збирає один `PyTrainer.exe`, поруч із яким лежить прогрес, — інтернет, права адміністратора й інсталятор не потрібні (див. нижче) |
 | 📦 **Експорт для портфоліо** | «Файл → Експортувати розв'язані задачі» складає код у окремі `.py` + README |
 
 <p align="center">
   <img src="docs/images/02-checks.png" width="66%" alt="Перевірка прихованими тестами">
   <img src="docs/images/03-progress.png" width="32%" alt="Прогрес і слабкі місця">
+</p>
+
+<p align="center">
+  <img src="docs/images/05-error-help.png" width="66%" alt="Пояснення помилки українською">
+  <img src="docs/images/06-cheatsheet.png" width="32%" alt="Міні-довідка з теми задачі">
+</p>
+
+<p align="center">
+  <img src="docs/images/04-reviews.png" width="49%" alt="Черга повторень 1/3/7/30">
+  <img src="docs/images/07-light.png" width="49%" alt="Світла тема й масштаб тексту">
 </p>
 
 ## Швидкий старт
@@ -104,6 +120,11 @@ task(
         hint("де шукати", "sum() і len() — твої друзі."),
         solution("def average(numbers):\n    return sum(numbers) / len(numbers) if numbers else None"),
     ],
+    # для задачі, узятої ззовні, — джерело й посилання на оригінал
+    source="Two Sum · LeetCode #1",
+    source_url="https://leetcode.com/problems/two-sum/",
+    # яку шпаргалку показати у вкладці «Довідка» (див. curriculum/cheatsheets.py)
+    cheatsheet="dicts",
 )
 ```
 
@@ -117,8 +138,10 @@ task(
 
 ```
 curriculum/        дані: місяці → теми → задачі (умова, заготовка, перевірки, підказки)
+    cheatsheets.py   міні-довідка: шпаргалки та автопідбір під тему задачі
 trainer/core/      ядро без інтерфейсу:
     runner.py        запуск коду в окремому процесі + перевірки
+    errors.py        traceback → пояснення українською (що це і що робити)
     session.py       правила навчання: XP, статуси, черга повторень
     scoring.py       самі формули XP та інтервалів
     db.py            SQLite: прогрес, спроби, підказки, час
@@ -145,17 +168,46 @@ main.py            точка входу
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-115 тестів: ядро перевірки, база, правила XP й повторень, план і інтерфейс
-(він теж запускається без екрана). Найцінніший — `test_curriculum.py`: він
+230 тестів: ядро перевірки, пояснювач помилок, база й копії, правила XP
+та повторень, план, довідка, теми й інтерфейс (він теж запускається без екрана).
+Найцінніший —
+`test_curriculum.py`: він
 прогоняє **кожен розв'язок** проти перевірок його ж задачі й окремо перевіряє,
 що заготовка коду **не** проходить. Зламану задачу неможливо непомітно
 додати в план. Усе це ганяється в CI на Python 3.11 і 3.13.
+
+## Збірка `.exe` (щоб не ставити Python)
+
+Найпростіший шлях для того, кому ти даєш тренажер:
+
+```bash
+.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.venv\Scripts\python.exe tools\build_exe.py
+```
+
+У теку `dist/` ляжуть `PyTrainer.exe`, README і коротка інструкція. Один із CI
+збирає той самий `.exe` на кожен push і запускає його без екрана, щоб перевірити,
+що він справді стартує; готовий архів віддається в реліз на теґ `v*`.
+
+```bash
+git tag v0.2.0 && git push --tags   # CI збере .exe і створить реліз
+```
+
+Специфікація (`pytrainer.spec`) навмисне викидає зайві модулі Qt — без цього
+однофайловий `.exe` важить у кілька разів більше, хоча користується лише
+`QtCore`, `QtGui` та `QtWidgets`.
+
+**Важливо:** зібраний `.exe` пише прогрес **поруч із собою**, а не в теку
+розпакування — інакше після кожного закриття весь прогрес зникав би
+(див. `trainer/paths.py`).
 
 ## Дані
 
 | Файл | Що це |
 |---|---|
 | `pytrainer.db` | твій прогрес (SQLite, створюється сам, у Git не потрапляє) |
+| `backups/` | тихі копії бази перед кожним запуском, лишаються останні 7 |
+| `pytrainer.ini` | стан вікна й вигляд: тема, масштаб тексту, яка задача була відкрита |
 | `progress.json` | той самий прогрес у читабельному вигляді — його можна тримати в Git і переносити між машинами |
 | `Python-Roadmap.md` | генерований роадмап: галочки ставляться самі, коли ти здаєш задачу |
 
@@ -167,6 +219,44 @@ main.py            точка входу
    «напиши за мене». Тому розв'язок і заблоковано за таймером.
 2. **Місяць 3+ — правило 20–30 хвилин.** Спершу сам, потім ШІ.
 3. **Повторення — частина роботи, а не покарання.** Саме тому за них дають XP.
+
+## У цифрах
+
+| | |
+|---|---|
+| Задач у плані | 88 (60 готові, решта — позначки майбутніх місяців) |
+| Тестів | 230, з них найцінніший прогонить кожен розв'язок проти його ж перевірок (за цифрою в README стежить сам тест) |
+| Зовнішніх залежностей | 1 (PySide6); усе інше — стандартна бібліотека й SQLite |
+| Цикл повторень | 1 → 3 → 7 → 30 днів |
+
+## In English
+
+**PyTrainer** is a desktop Python trainer (PySide6 / Qt 6, Ukrainian UI) built
+for one goal: making it impossible to fool yourself into thinking you can code.
+
+- You write code in a built-in editor and press `F5`; the program runs it **for
+  real** — in a separate process, with a 5-second timeout, a 64 KB output cap
+  and `stdin` fixtures so `input()` never hangs.
+- Checks assert on behaviour (function results, what the program printed for a
+  given input), not on how your answer looks.
+- The full solution stays locked behind a 10-minute timer of **active** work
+  (20–25 for projects). Every hint costs XP; pasting the solution also forces the
+  task into the review queue.
+- Spaced repetition at 1/3/7/30 days, with separate "passed" and "retained"
+  counters and XP for successful reviews.
+- Error messages, hints and the cheat-sheet tab explain things in Ukrainian;
+  algorithmic tasks credit their source (LeetCode, Codewars, official docs).
+- One external dependency (`PySide6`); everything else is the standard library.
+
+```bash
+python -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python main.py          # add --demo to try it without touching your progress
+.venv/bin/python -m unittest discover -s tests
+```
+
+Architecture: data in `curriculum/`, learning rules and code execution in
+`trainer/core/` (no Qt), UI in `trainer/ui/` — so the logic is testable without a
+window. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). MIT licensed.
 
 ## Ліцензія
 

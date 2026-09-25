@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "saved_at": "2026-09-24T23:00:41",
+  "saved_at": "2026-09-25T22:45:21",
   "progress": [
     {
       "task_id": "w1-hello",
@@ -78,9 +78,9 @@
       "solved_at": null,
       "best_xp": 0,
       "bonus_xp": 0,
-      "hints_used": 0,
+      "hints_used": 2,
       "solution_used": 0,
-      "active_seconds": 110.0
+      "active_seconds": 270.0
     }
   ],
   "reviews": [
