@@ -284,6 +284,10 @@ def _run_process(
 
 def _evaluate_stdout(check: Check, out: str) -> CheckResult:
     """Перевіряє вивід програми за правилами перевірки."""
+    # Windows переводить \n у \r\n, коли програма пише у файл (а ми саме так і
+    # ловимо вивід). Без цього нормалізування перевірка «вивід рівно такий»
+    # проходила б на Linux і падала б лише на Windows.
+    out = out.replace("\r\n", "\n")
     problems = []
 
     if check.stdout_equals is not None:

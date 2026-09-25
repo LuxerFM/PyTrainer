@@ -33,6 +33,47 @@ class CurriculumStructureTests(unittest.TestCase):
         topics = {topic.title for topic in CURRICULUM[1].topics}
         self.assertIn("Тиждень 8 · Дані: JSON, CSV, SQL", topics)
 
+    def test_every_month_one_week_has_drills(self):
+        """Після кожного тижня теорії — тема з дрилами.
+
+        Це не прикраса, а вимога до змісту: 18 задач на місяць проходили за
+        кілька вечорів, і місця для повторів на різних даних не лишалось.
+        """
+        topics = CURRICULUM[0].topics
+        for week in range(1, 5):
+            drills = [item for item in topics
+                      if item.title.startswith(f"Тренування тижня {week}")]
+            with self.subTest(week=week):
+                self.assertTrue(drills, f"немає теми «Тренування тижня {week}»")
+                ready = [task for task in drills[0].tasks if not task.stub]
+                self.assertGreaterEqual(len(ready), 5, "у тренуванні мало дрилів")
+
+    def test_drills_go_right_after_their_week(self):
+        """Дрили стоять одразу після свого тижня, а не зібрані в кінці.
+
+        Інакше план на день пропонував би повторювати те, що вчив тиждень
+        тому, замість того, що вчив сьогодні.
+        """
+        titles = [item.title for item in CURRICULUM[0].topics]
+        for week in range(1, 5):
+            with self.subTest(week=week):
+                start = next(
+                    index for index, title in enumerate(titles)
+                    if title.startswith(f"Тиждень {week} ·")
+                )
+                self.assertTrue(
+                    titles[start + 1].startswith(f"Тренування тижня {week}"),
+                    f"після «{titles[start]}» іде «{titles[start + 1]}»",
+                )
+
+    def test_drills_stay_short(self):
+        """Дрил — це 5–12 хвилин: довгу вправу просто не почнуть."""
+        for task in study_tasks():
+            if task.id.startswith("d"):
+                with self.subTest(task=task.id):
+                    self.assertLessEqual(task.minutes, 12, "дрил задовгий")
+                    self.assertGreaterEqual(task.minutes, 5, "дрил закороткий")
+
     def test_every_ready_task_is_complete(self):
         for task in study_tasks():
             with self.subTest(task=task.id):

@@ -1,10 +1,14 @@
 """Місяць 1 — база Python: змінні, умови, цикли, функції, списки, словники, файли.
 
 Кожна задача має заготовку коду, приховані перевірки та підказки. Розв'язки
-перевіряються автоматично тестом tests/test_curriculum_solutions.py — тому
-код у підказці `solution(...)` завжди робочий.
+перевіряє tests/test_curriculum.py — тому код у підказці `solution(...)`
+завжди робочий.
+
+Після кожного тижня теорії йде тема з дрилами (див. drills1.py): короткі
+вправи, які й дають ту саму навичку на різних даних.
 """
 
+from .drills1 import WEEK1_DRILLS, WEEK2_DRILLS, WEEK3_DRILLS, WEEK4_DRILLS
 from .schema import Month, code, hint, solution, stdout, task, topic
 
 MONTH = Month(
@@ -342,6 +346,9 @@ else:
                 ],
             ),
         ),
+        # Дрили йдуть одразу після свого тижня: теорія → 5 коротких вправ
+        # на ту саму навичку, поки вона ще гаряча.
+        WEEK1_DRILLS,
         topic(
             "Тиждень 2 · Цикли та списки",
             task(
@@ -594,6 +601,7 @@ def is_hot(secret, guess):
                 ],
             ),
         ),
+        WEEK2_DRILLS,
         topic(
             "Тиждень 3 · Функції та словники",
             task(
@@ -767,6 +775,7 @@ def top_category(expenses):
                 ],
             ),
         ),
+        WEEK3_DRILLS,
         topic(
             "Тиждень 4 · Файли і помилки",
             task(
@@ -958,5 +967,6 @@ def load_expenses(path):
                 ],
             ),
         ),
+        WEEK4_DRILLS,
     ),
 )

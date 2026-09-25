@@ -125,6 +125,16 @@ class RunCodeTests(unittest.TestCase):
         self.assertFalse(result.all_passed)
         self.assertIn("щонайменше 2 рядків", result.first_error)
 
+    def test_equals_ignores_windows_line_endings(self):
+        """Вивід ловиться у файл, а Windows пише туди \\r\\n.
+
+        Без нормалізації перевірка «вивід рівно такий» проходила б на Linux
+        і падала б на Windows — саме так і сталося з дрилом FizzBuzz.
+        """
+        result = run_code('print("а")\nprint("б")', [stdout("рівно два рядки", equals="а\nб")])
+        self.assertTrue(result.all_passed, result.first_error)
+        self.assertEqual(result.checks[0].actual, "а\nб")
+
     def test_order_of_checks_is_kept(self):
         result = run_code(
             "def ok():\n    return True\n",

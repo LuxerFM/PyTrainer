@@ -21,6 +21,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from curriculum import all_tasks, study_tasks  # noqa: E402
 from trainer import paths  # noqa: E402
 
 
@@ -127,6 +128,15 @@ class DocsTest(unittest.TestCase):
             f"{total} тестів", readme,
             f"у README немає згадки «{total} тестів» — онови цифри",
         )
+
+    def test_readme_states_the_real_task_count(self) -> None:
+        """Число задач у README — теж обіцянка, і вона має бути правдою."""
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        total, ready = len(all_tasks()), len(study_tasks())
+        self.assertIn(f"{total} задач", readme,
+                      f"у README немає згадки «{total} задач» — онови цифри")
+        self.assertIn(f"{ready} уже можна розв'язувати", readme,
+                      f"у README немає «{ready} уже можна розв'язувати»")
 
     def test_readme_images_exist(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
