@@ -9,12 +9,18 @@
 4. кладе поруч README, LICENSE і коротку інструкцію — щоб людині, яка
    завантажила архів, не треба було нічого добудовувати.
 
+З прапорцем `--install` той самий .exe копіюється ще й у корінь проєкту —
+тобто туди, де вже лежить прогрес. Для себе самого це найзручніший варіант:
+і запуск із коду, і запуск .exe бачать одну базу. Ярлик на це .exe робить
+`tools/make_shortcut.py`.
+
 Прогрес користувача застосунок створює сам — поруч із .exe
 (див. trainer/paths.py).
 """
 
 from __future__ import annotations
 
+import argparse
 import shutil
 import subprocess
 import sys
@@ -47,7 +53,14 @@ def ensure_icons() -> None:
     subprocess.run([sys.executable, str(ROOT / "tools" / "make_icon.py")], check=True)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Зібрати PyTrainer.exe")
+    parser.add_argument(
+        "--install", action="store_true",
+        help="покласти .exe поруч із проєктом (туди, де лежить прогрес)",
+    )
+    args = parser.parse_args(argv)
+
     try:
         import PyInstaller  # noqa: F401
     except ImportError:
@@ -93,6 +106,14 @@ def main() -> int:
     print()
     print(f"Готово: {built} ({built.stat().st_size / 1_048_576:.1f} МБ)")
     print(f"Роздавати можна всю теку: {DIST}")
+
+    if args.install:
+        installed = ROOT / EXE_NAME
+        shutil.copy2(built, installed)
+        print()
+        print(f"Встановлено поруч із проєктом: {installed}")
+        print("База знайома та сама, що й у запуску з коду — прогрес не подвоюється.")
+        print(f"Ярлик на робочий стіл: {sys.executable} tools/make_shortcut.py")
     return 0
 
 

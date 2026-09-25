@@ -14,6 +14,8 @@ pytrainer.ini
 build/
 dist/
 *.egg-info/
+PyTrainer.exe
+PyTrainer
 
 # покриття тестами
 .coverage
