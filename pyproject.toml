@@ -46,3 +46,18 @@ Source = "https://github.com/LuxerFM/pytrainer"
 [tool.setuptools]
 packages = ["curriculum", "trainer", "trainer.core", "trainer.ui"]
 py-modules = ["main"]
+
+# Покриття: міряємо лише сам застосунок (не tools/ і не тести), інакше цифра
+# нічого не означає — допоміжні скрипти перевіряються очима, а не тестами.
+# Правки в цьому розділі однакові для локального запуску й для CI, тому
+# `coverage run -m unittest discover -s tests` працює без додаткових прапорців.
+[tool.coverage.run]
+source = ["curriculum", "trainer"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    'if __name__ == "__main__":',
+    "raise NotImplementedError",
+]
+show_missing = true

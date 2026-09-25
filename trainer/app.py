@@ -58,7 +58,9 @@ def main(argv: list[str] | None = None) -> int:
     from .ui.main_window import MainWindow
     from .ui.theme import apply_theme
 
-    app = QApplication(argv)
+    # Якщо застосунок уже створено (вбудований запуск, тести) — беремо його:
+    # другий QApplication у одному процесі Qt не дозволяє.
+    app = QApplication.instance() or QApplication(argv)
     app.setApplicationName("PyTrainer")
     app.setApplicationDisplayName("PyTrainer")
     if ICON_PATH.exists():

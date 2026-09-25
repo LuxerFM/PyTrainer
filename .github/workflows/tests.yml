@@ -56,12 +56,13 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt
 
+      # Порог 90%: нижче нього легше впасти, ніж пройти повз непокриту гілку.
       - name: Покриття
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          python -m coverage run --source=curriculum,trainer -m unittest discover -s tests
-          python -m coverage report | tee coverage.txt
+          python -m coverage run -m unittest discover -s tests
+          python -m coverage report --fail-under=90 | tee coverage.txt
           {
             echo '### Покриття тестами'
             echo '```'
