@@ -13,12 +13,16 @@ SQLite вбудований у Python, тому нічого встановлю�
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from datetime import date, datetime
 from pathlib import Path
 
+from ..paths import app_folder
 from . import scoring
 
-DB_PATH = Path(__file__).resolve().parents[2] / "pytrainer.db"
+# База лежить поруч із застосунком (а в зібраному .exe — поруч із ним самим,
+# а не в тимчасовій теці розпакування: див. trainer/paths.py).
+DB_PATH = app_folder() / "pytrainer.db"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS progress (
@@ -64,6 +68,65 @@ def _today() -> str:
     return date.today().isoformat()
 
 
+BACKUP_FOLDER = "backups"
+BACKUP_KEEP = 7
+
+
+def backup_database(db_path: str | Path = DB_PATH,
+                    folder: str | Path | None = None,
+                    keep: int = BACKUP_KEEP) -> Path | None:
+    """Робить копію бази й прибирає найстаріші копії.
+
+    Навіщо: усе навчання за кілька місяців лежить в одному файлі. Один
+    пошкоджений файл (вимкнули комп'ютер під час запису) — і прогрес
+    зник. Копія раз на запуск вирішує це повністю й коштує мілісекунди.
+
+    Копії кладемо в теку `backups/` поруч із базою, лишаємо `keep` штук.
+    Якщо бази ще немає або вона порожня — повертаємо None.
+    """
+    source = Path(db_path)
+    if not source.exists() or source.stat().st_size == 0:
+        return None
+
+    target_folder = Path(folder) if folder else source.parent / BACKUP_FOLDER
+    target_folder.mkdir(parents=True, exist_ok=True)
+
+    # Ім'я мусить сортуватись як дата. Тому в кінець завжди йде номер із
+    # нулем попереду: два запуски за одну секунду отримують -00 і -01, і
+    # прибирання старих копій (воно йде за іменем) не переплутає порядок.
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    counter = 0
+    while True:
+        target = target_folder / f"{source.stem}-{stamp}-{counter:02d}.db"
+        if not target.exists():
+            break
+        counter += 1
+
+    # sqlite3.Connection.backup — єдиний безпечний спосіб скопіювати базу:
+    # звичайне копіювання файлу може зловити її посеред запису.
+    # closing() потрібен обов'язково: сам `with sqlite3.connect(...)` робить
+    # commit, але НЕ закриває файл — на Windows такий файл потім не видалити.
+    with closing(sqlite3.connect(str(source))) as src, \
+            closing(sqlite3.connect(str(target))) as dst:
+        src.backup(dst)
+
+    # Прибираємо найстаріші копії за часом змінення, а не за іменем: імена
+    # можуть повторитись (якщо копію за ту саму секунду вже видалили), а час
+    # змінення — ні. Свіжу копію не чіпаємо ніколи, тому одна з `keep` — це
+    # завжди вона.
+    keep = max(1, keep)
+    older = [
+        item for item in target_folder.glob(f"{source.stem}-*.db") if item != target
+    ]
+    older.sort(key=lambda item: (item.stat().st_mtime_ns, item.name))
+    for stale in older[: max(0, len(older) - (keep - 1))]:
+        try:
+            stale.unlink()
+        except OSError:            # копія зайнята іншим процесом — не біда
+            pass
+    return target
+
+
 class Database:
     """Обгортка над SQLite з методами під задачі тренажера."""
 
@@ -75,18 +138,33 @@ class Database:
         self._migrate()
         self.connection.commit()
 
+    def _columns(self, table: str) -> set[str]:
+        return {
+            row["name"]
+            for row in self.connection.execute(f"PRAGMA table_info({table})")
+        }
+
+    def _add_columns(self, table: str, columns: dict[str, str]) -> None:
+        """Додає лише ті колонки, яких у таблиці ще немає."""
+        existing = self._columns(table)
+        for name, ddl in columns.items():
+            if name not in existing:
+                self.connection.execute(
+                    f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"
+                )
+
     def _migrate(self) -> None:
         """Додає нові колонки у базу, створену попередньою версією."""
-        columns = {
-            row["name"]
-            for row in self.connection.execute("PRAGMA table_info(progress)")
-        }
-        if "code" not in columns:
-            self.connection.execute("ALTER TABLE progress ADD COLUMN code TEXT")
-        if "bonus_xp" not in columns:
-            self.connection.execute(
-                "ALTER TABLE progress ADD COLUMN bonus_xp INTEGER NOT NULL DEFAULT 0"
-            )
+        self._add_columns("progress", {
+            "code": "TEXT",
+            "bonus_xp": "INTEGER NOT NULL DEFAULT 0",
+        })
+        # Журнал помилок: що саме не пройшло в спробі. Потрібно, щоб тренажер
+        # міг повертати не «задачу взагалі», а конкретний провал.
+        self._add_columns("attempts", {
+            "failed_check": "TEXT NOT NULL DEFAULT ''",
+            "error_kind": "TEXT NOT NULL DEFAULT ''",
+        })
 
     def close(self) -> None:
         self.connection.close()
@@ -235,17 +313,73 @@ class Database:
     # ------------------------------------------------------------------
 
     def record_attempt(
-        self, task_id: str, *, ok: bool, with_checks: bool, xp: int = 0
+        self,
+        task_id: str,
+        *,
+        ok: bool,
+        with_checks: bool,
+        xp: int = 0,
+        failed_check: str = "",
+        error_kind: str = "",
     ) -> None:
         self._ensure(task_id)
         self.connection.execute(
             """
-            INSERT INTO attempts (task_id, created_at, ok, with_checks, xp)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO attempts
+                (task_id, created_at, ok, with_checks, xp, failed_check, error_kind)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (task_id, _now(), 1 if ok else 0, 1 if with_checks else 0, xp),
+            (task_id, _now(), 1 if ok else 0, 1 if with_checks else 0, xp,
+             failed_check, error_kind),
         )
         self.connection.commit()
+
+    # ------------------------------------------------------------------
+    # журнал помилок
+    # ------------------------------------------------------------------
+
+    def mistakes(self, limit: int = 12) -> list[sqlite3.Row]:
+        """Останні помилки: задача + тип помилки + скільки разів наступив.
+
+        Групуємо саме за парою (задача, тип помилки): «двічі NameError у Two
+        Sum» — це одна річ, яку треба добити, а не два різні рядки в списку.
+        Задачі без розпізнаного типу помилки (просто неправильний вивід) не
+        потрапляють сюди: повторення для них і так працює.
+        """
+        return list(
+            self.connection.execute(
+                """
+                SELECT task_id,
+                       error_kind,
+                       COUNT(*)        AS times,
+                       MAX(failed_check) AS failed_check,
+                       MAX(created_at) AS last_at
+                  FROM attempts
+                 WHERE with_checks = 1 AND ok = 0 AND error_kind != ''
+                 GROUP BY task_id, error_kind
+                 ORDER BY last_at DESC
+                 LIMIT ?
+                """,
+                (limit,),
+            )
+        )
+
+    def xp_by_day(self, days: int = 56) -> dict[str, int]:
+        """XP за задачі по днях — для графіка прогресу."""
+        rows = self.connection.execute(
+            """
+            SELECT substr(created_at, 1, 10) AS day, SUM(xp) AS xp
+              FROM attempts
+             WHERE ok = 1
+             GROUP BY day
+            """
+        )
+        cutoff = date.fromordinal(date.today().toordinal() - days).isoformat()
+        return {
+            row["day"]: int(row["xp"] or 0)
+            for row in rows
+            if row["day"] and row["day"] >= cutoff
+        }
 
     def attempts_count(self, task_id: str, *, with_checks: bool = True) -> int:
         row = self.connection.execute(

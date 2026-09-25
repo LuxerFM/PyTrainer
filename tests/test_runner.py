@@ -10,6 +10,72 @@ from curriculum.schema import code, stdout
 from trainer.core.runner import run_code, run_task
 
 
+class FailureMetadataTests(unittest.TestCase):
+    """Що ми знаємо про провал: яка перевірка, який тип помилки, який рядок.
+
+    Саме з цих трьох полів складається журнал помилок і кнопка «перейти до
+    рядка», тому вони мають бути точними.
+    """
+
+    TASK = "m3-lc-two-sum"
+
+    def _run(self, source: str):
+        return run_task(find_task(self.TASK), source)
+
+    def test_reports_failed_check_name(self):
+        result = self._run("def two_sum(numbers, target):\n    return [0, 0]\n")
+        self.assertEqual(result.first_failed_check, "простий випадок")
+        self.assertEqual(result.failure_kind, "AssertionError")
+
+    def test_success_has_no_failure_metadata(self):
+        task = find_task(self.TASK)
+        result = self._run(task.solution_hint.text)
+        self.assertTrue(result.all_passed)
+        self.assertEqual(result.first_failed_check, "")
+        self.assertEqual(result.failure_kind, "")
+        self.assertEqual(result.failed_line, 0)
+        self.assertEqual(result.advice, "")
+
+    def test_points_to_the_line_of_the_exception(self):
+        result = self._run(
+            "def two_sum(numbers, target):\n    return number\n"
+        )
+        self.assertEqual(result.failure_kind, "NameError")
+        self.assertEqual(result.failed_line, 2)
+
+    def test_points_to_the_deepest_user_frame(self):
+        """Виняток у вкладеному виклику — рядок у самій глибині, не виклик."""
+        source = (
+            "def helper(x):\n"
+            "    return 10 / x\n"
+            "\n"
+            "\n"
+            "def two_sum(numbers, target):\n"
+            "    return helper(0)\n"
+        )
+        result = self._run(source)
+        self.assertEqual(result.failure_kind, "ZeroDivisionError")
+        self.assertEqual(result.failed_line, 2)
+
+    def test_no_line_for_a_plain_wrong_answer(self):
+        """Неправильний результат — це не помилка в рядку, показувати нічого."""
+        result = self._run("def two_sum(numbers, target):\n    return [1, 1]\n")
+        self.assertEqual(result.failed_line, 0)
+
+    def test_syntax_error_line_comes_from_stderr(self):
+        result = self._run(
+            "def two_sum(numbers, target)\n    return [0, 1]\n"
+        )
+        self.assertEqual(result.failure_kind, "SyntaxError")
+        self.assertEqual(result.failed_line, 1)
+
+    def test_timeout_is_a_failure_with_kind(self):
+        result = run_code("while True:\n    pass\n", timeout=1.0)
+        self.assertTrue(result.timed_out)
+        self.assertEqual(result.failure_kind, "TimeoutError")
+        self.assertIn("цикл", result.advice.lower())
+
+
 class RunCodeTests(unittest.TestCase):
     def test_prints_stdout(self):
         result = run_code('print("привіт")')

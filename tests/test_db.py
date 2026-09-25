@@ -1,10 +1,12 @@
 """Тести бази даних тренажера."""
 
+import tempfile
 import unittest
 from datetime import date, timedelta
+from pathlib import Path
 
 from trainer.core import scoring
-from trainer.core.db import Database
+from trainer.core.db import Database, backup_database
 
 
 class DatabaseTests(unittest.TestCase):
@@ -101,15 +103,17 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(self.db.review("w2-for")["interval_index"], 0)
 
     def test_due_and_upcoming_reviews(self):
-        today = date(2026, 9, 24)
-        self.db.schedule_review("w1-hello", 1, 0)
-        self.db.schedule_review("w2-for", 3, 1)
+        # schedule_review рахує дату від реального сьогодні, тому беремо
+        # сьогоднішню дату — інакше тест ламався б наступного ж дня.
+        today = date.today()
+        self.db.schedule_review("w1-hello", 0, 0)   # час повторювати вже сьогодні
+        self.db.schedule_review("w2-for", 3, 1)     # ще через три дні
 
-        due = self.db.due_reviews(on=today + timedelta(days=1))
+        due = self.db.due_reviews(on=today)
         self.assertEqual([row["task_id"] for row in due], ["w1-hello"])
 
         upcoming = self.db.upcoming_reviews(on=today)
-        self.assertEqual({row["task_id"] for row in upcoming}, {"w1-hello", "w2-for"})
+        self.assertEqual([row["task_id"] for row in upcoming], ["w2-for"])
 
     # ---------- статистика ----------
 
@@ -205,6 +209,173 @@ class DatabaseTests(unittest.TestCase):
         self.assertIsNone(self.db.review("w1-hello"))
 
 
+class MistakeLogTests(unittest.TestCase):
+    """Журнал помилок: що саме людина не здала і скільки разів."""
+
+    def setUp(self):
+        self.db = Database(":memory:")
+
+    def tearDown(self):
+        self.db.close()
+
+    def test_empty_log(self):
+        self.assertEqual(self.db.mistakes(), [])
+
+    def test_successful_attempt_is_not_a_mistake(self):
+        self.db.record_attempt("w1-hello", ok=True, with_checks=True, xp=100,
+                               error_kind="AssertionError")
+        self.assertEqual(self.db.mistakes(), [])
+
+    def test_runs_without_checks_are_not_mistakes(self):
+        self.db.record_attempt("w1-hello", ok=False, with_checks=False)
+        self.assertEqual(self.db.mistakes(), [])
+
+    def test_wrong_output_without_a_kind_is_not_logged(self):
+        """«У виводі немає…» — не помилка Python, у журнал не пишемо."""
+        self.db.record_attempt("w1-hello", ok=False, with_checks=True,
+                               failed_check="виводить привітання", error_kind="")
+        self.assertEqual(self.db.mistakes(), [])
+
+    def test_groups_by_task_and_kind(self):
+        for _ in range(3):
+            self.db.record_attempt("m3-lc-two-sum", ok=False, with_checks=True,
+                                   failed_check="простий випадок",
+                                   error_kind="NameError")
+        self.db.record_attempt("m3-lc-two-sum", ok=False, with_checks=True,
+                               failed_check="два однакові числа",
+                               error_kind="AssertionError")
+
+        rows = self.db.mistakes()
+        self.assertEqual(len(rows), 2)          # дві різні помилки, не чотири
+        by_kind = {row["error_kind"]: row for row in rows}
+        self.assertEqual(by_kind["NameError"]["times"], 3)
+        self.assertEqual(by_kind["AssertionError"]["times"], 1)
+        self.assertEqual(by_kind["NameError"]["task_id"], "m3-lc-two-sum")
+
+    def test_newest_mistakes_come_first(self):
+        self.db.record_attempt("w1-hello", ok=False, with_checks=True,
+                               error_kind="NameError")
+        self.db.connection.execute(
+            "UPDATE attempts SET created_at = '2020-01-01T10:00:00'"
+        )
+        self.db.connection.commit()
+        self.db.record_attempt("w1-vars", ok=False, with_checks=True,
+                               error_kind="TypeError")
+        rows = self.db.mistakes()
+        self.assertEqual(rows[0]["task_id"], "w1-vars")
+
+    def test_limit_is_respected(self):
+        for index in range(5):
+            self.db.record_attempt(f"task-{index}", ok=False, with_checks=True,
+                                   error_kind="ValueError")
+        self.assertEqual(len(self.db.mistakes(limit=2)), 2)
+
+    def test_reset_clears_the_log(self):
+        self.db.record_attempt("w1-hello", ok=False, with_checks=True,
+                               error_kind="NameError")
+        self.db.reset_task("w1-hello")
+        self.assertEqual(self.db.mistakes(), [])
+
+
+class XpHistoryTests(unittest.TestCase):
+    def setUp(self):
+        self.db = Database(":memory:")
+
+    def tearDown(self):
+        self.db.close()
+
+    def test_xp_by_day_collects_successful_attempts(self):
+        self.db.record_attempt("w1-hello", ok=True, with_checks=True, xp=100)
+        self.db.record_attempt("w1-vars", ok=True, with_checks=True, xp=50)
+        self.db.record_attempt("w1-input", ok=False, with_checks=True, xp=0)
+
+        by_day = self.db.xp_by_day()
+        self.assertEqual(list(by_day.values()), [150])
+        self.assertEqual(list(by_day)[0], date.today().isoformat())
+
+    def test_xp_by_day_is_empty_without_passes(self):
+        self.assertEqual(self.db.xp_by_day(), {})
+
+    def test_old_days_are_cut_off(self):
+        self.db.record_attempt("w1-hello", ok=True, with_checks=True, xp=100)
+        self.db.connection.execute(
+            "UPDATE attempts SET created_at = '2020-01-01T10:00:00'"
+        )
+        self.db.connection.commit()
+        self.assertEqual(self.db.xp_by_day(days=28), {})
+
+
+class MigrationTests(unittest.TestCase):
+    """База зі старої версії тренажера не має ламатись."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.path = Path(self.tmp.name) / "old.db"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _make_old_database(self) -> None:
+        """Схема до журналу помилок: без failed_check/error_kind."""
+        import sqlite3
+
+        connection = sqlite3.connect(self.path)
+        connection.executescript(
+            """
+            CREATE TABLE progress (
+                task_id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'todo',
+                started_at TEXT, solved_at TEXT,
+                best_xp INTEGER NOT NULL DEFAULT 0, hints_used INTEGER NOT NULL DEFAULT 0,
+                solution_used INTEGER NOT NULL DEFAULT 0,
+                active_seconds REAL NOT NULL DEFAULT 0
+            );
+            CREATE TABLE attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL,
+                created_at TEXT NOT NULL, ok INTEGER NOT NULL,
+                with_checks INTEGER NOT NULL, xp INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE reviews (
+                task_id TEXT PRIMARY KEY, due_date TEXT NOT NULL,
+                interval_index INTEGER NOT NULL DEFAULT 0, last_result INTEGER,
+                updated_at TEXT NOT NULL
+            );
+            INSERT INTO progress (task_id, status, best_xp) VALUES ('w1-hello', 'done', 100);
+            INSERT INTO attempts (task_id, created_at, ok, with_checks, xp)
+                 VALUES ('w1-hello', '2026-01-01T10:00:00', 1, 1, 100);
+            """
+        )
+        connection.commit()
+        connection.close()
+
+    def test_old_database_gains_new_columns(self):
+        self._make_old_database()
+        db = Database(self.path)
+        try:
+            attempt_columns = {row["name"] for row in
+                               db.connection.execute("PRAGMA table_info(attempts)")}
+            self.assertIn("failed_check", attempt_columns)
+            self.assertIn("error_kind", attempt_columns)
+            progress_columns = {row["name"] for row in
+                                db.connection.execute("PRAGMA table_info(progress)")}
+            self.assertIn("code", progress_columns)
+            self.assertIn("bonus_xp", progress_columns)
+        finally:
+            db.close()
+
+    def test_old_progress_survives_the_migration(self):
+        self._make_old_database()
+        db = Database(self.path)
+        try:
+            self.assertEqual(db.status("w1-hello"), "done")
+            self.assertEqual(db.total_xp(), 100)
+            self.assertEqual(db.mistakes(), [])
+            db.record_attempt("w1-vars", ok=False, with_checks=True,
+                              error_kind="NameError")
+            self.assertEqual(len(db.mistakes()), 1)
+        finally:
+            db.close()
+
+
 class ScoringIntegrationTests(unittest.TestCase):
     """Перевіряємо, що правила XP і база узгоджені між собою."""
 
@@ -226,6 +397,63 @@ class ScoringIntegrationTests(unittest.TestCase):
                 solution_used=self.db.solution_used(task.id),
             )
         )
+
+
+class BackupTests(unittest.TestCase):
+    """Копія бази: прогрес за місяці не має залежати від одного файлу."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.folder = Path(self.tmp.name)
+        self.db = Database(self.folder / "pytrainer.db")
+
+    def tearDown(self):
+        self.db.close()
+        self.tmp.cleanup()
+
+    def test_backup_copies_the_progress(self):
+        self.db.mark_solved("w1-hello", 100)
+        self.db.close()                       # копіюємо закриту базу
+
+        copy = backup_database(self.folder / "pytrainer.db")
+        self.assertIsNotNone(copy)
+        self.assertTrue(copy.exists())
+
+        restored = Database(copy)
+        try:
+            self.assertEqual(restored.status("w1-hello"), "done")
+            self.assertEqual(restored.total_xp(), 100)
+        finally:
+            restored.close()
+
+    def test_backup_keeps_only_the_last_copies(self):
+        self.db.mark_solved("w1-hello", 100)
+        self.db.close()
+        source = self.folder / "pytrainer.db"
+
+        created = [backup_database(source, keep=2) for _ in range(4)]
+
+        copies = sorted((self.folder / "backups").glob("pytrainer-*.db"))
+        self.assertEqual(len(copies), 2)
+
+        newest = created[-1]
+        self.assertTrue(newest.exists(), "щойно створена копія не має зникати")
+        restored = Database(newest)
+        try:
+            self.assertEqual(restored.status("w1-hello"), "done")
+            self.assertEqual(restored.total_xp(), 100)
+        finally:
+            restored.close()
+
+    def test_backup_names_sort_like_dates(self):
+        """Ім'я копії можна сортувати як рядок — воно йде в хронологічному порядку."""
+        self.db.mark_solved("w1-hello", 100)
+        self.db.close()
+        names = [backup_database(self.folder / "pytrainer.db").name for _ in range(3)]
+        self.assertEqual(names, sorted(names))
+
+    def test_no_backup_without_a_database(self):
+        self.assertIsNone(backup_database(self.folder / "нема.db"))
 
 
 if __name__ == "__main__":

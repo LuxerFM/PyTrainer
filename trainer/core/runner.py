@@ -41,6 +41,8 @@ HARNESS = '''
 
 # ---------- службовий код тренажера (не твій, не редагуй) ----------
 import json as _json
+import os as _os
+import traceback as _traceback
 
 _results = []
 
@@ -50,9 +52,38 @@ def _check(_name, _source):
         exec(compile(_source, "<тест>", "exec"), globals())
     except BaseException as _error:            # ловимо все, навіть assert
         _results.append({"name": _name, "ok": False,
-                         "error": "%s: %s" % (type(_error).__name__, _error)})
+                         "error": "%s: %s" % (type(_error).__name__, _error),
+                         "line": _user_line(_error)})
     else:
-        _results.append({"name": _name, "ok": True, "error": ""})
+        _results.append({"name": _name, "ok": True, "error": "", "line": 0})
+
+
+_HARNESS_LINE = _check.__code__.co_firstlineno
+
+
+def _user_line(_error):
+    """Номер рядка у файлі користувача, де стався виняток (0 — невідомо).
+
+    Твій код і службовий харнес лежать в одному файлі, тому кадри стека
+    мають однакове ім'я. Розрізняємо їх двома ознаками: кадр мусить бути
+    вище рядка, з якого починається харнес, і належати тому самому файлу
+    (кадри перевірок живуть у файлі "<тест>" і не рахуються).
+    """
+    try:
+        _frames = _traceback.extract_tb(_error.__traceback__)
+    except Exception:
+        return 0
+
+    _own = globals().get("__file__", "")
+    _own_name = _os.path.basename(_own) if _own else ""
+
+    for _frame in reversed(_frames):
+        if not _frame.line or _frame.lineno >= _HARNESS_LINE:
+            continue
+        if _own_name and _os.path.basename(_frame.filename) != _own_name:
+            continue
+        return _frame.lineno
+    return 0
 '''
 
 
@@ -64,6 +95,7 @@ class CheckResult:
     ok: bool
     error: str = ""
     actual: str = ""
+    line: int = 0        # рядок у коді користувача, де стався виняток
 
 
 @dataclass
@@ -95,8 +127,82 @@ class RunResult:
         return ""
 
     @property
+    def first_failed_check(self) -> str:
+        """Назва першої перевірки, яка не пройшла (порожньо, якщо все гаразд)."""
+        for check in self.checks:
+            if not check.ok:
+                return check.name
+        return ""
+
+    @property
+    def failed_line(self) -> int:
+        """Рядок у коді користувача, який треба показати (0 — невідомо).
+
+        Спершу дивимось, що нам сказала перевірка (вона бачила справжній
+        стек), і лише потім — текст помилки всього запуску.
+        """
+        for check in self.checks:
+            if not check.ok and check.line:
+                return check.line
+        from .errors import analyse
+
+        found = analyse(self.stderr)
+        if found is not None and found.line:
+            return found.line
+        return 0
+
+    @property
+    def failure_kind(self) -> str:
+        """Тип помилки для журналу: NameError, AssertionError…
+
+        Порожньо, якщо це просто неправильний вивід ("у виводі немає…") —
+        тоді писати в журнал нема чого, бо це не помилка Python.
+        """
+        if self.all_passed:
+            return ""
+        if self.timed_out:
+            return "TimeoutError"
+        from .errors import analyse_short
+
+        for text in (self.stderr, self.first_error):
+            if not text.strip():
+                continue
+            found = analyse_short(text.splitlines()[-1])
+            if found is not None:
+                return found.kind
+        return ""
+
+    @property
     def crashed(self) -> bool:
         return self.exit_code != 0 and not self.timed_out
+
+    @property
+    def advice(self) -> str:
+        """Людське пояснення помилки — те, що показуємо в панелі «Тести».
+
+        Порожньо, якщо помилки не було або ми не змогли її розпізнати.
+        """
+        if self.all_passed:
+            return ""
+        if self.timed_out:
+            return (
+                "Код працював занадто довго і був зупинений. Найчастіша "
+                "причина — цикл while, умова якого ніколи не стає хибною.\n"
+                "Що робити: перевір, чи змінна в умові справді змінюється "
+                "всередині циклу, і чи є вихід через break."
+            )
+        from .errors import analyse_short, explain
+
+        if self.stderr.strip():
+            text = explain(self.stderr)
+            if text:
+                return text
+
+        # Виняток усередині прихованої перевірки не доходить до stderr: харнес
+        # ловить його й зберігає одним рядком у результатах перевірок. Саме це й
+        # найчастіший випадок у новачка, тому пояснюємо і його.
+        short = analyse_short(self.first_error)
+        return short.as_text() if short else ""
 
 
 def _build_source(code: str, code_checks: list[Check]) -> str:

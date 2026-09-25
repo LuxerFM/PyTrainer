@@ -124,11 +124,15 @@ class StudySession:
         update.first_try = not solved_before
         xp = self.preview_xp(task)
 
+        # Пишемо в журнал не лише «не здав», а й на чому саме спіткнувся —
+        # з цього потім складається список «твої помилки».
         self.db.record_attempt(
             task.id,
             ok=result.all_passed,
             with_checks=True,
             xp=xp if result.all_passed else 0,
+            failed_check=result.first_failed_check,
+            error_kind=result.failure_kind,
         )
 
         if result.all_passed:

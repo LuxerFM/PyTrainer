@@ -85,6 +85,9 @@ class Task:
     files: dict[str, str] = field(default_factory=dict)   # допоміжні файли проєкту
     entrypoint: str = "solution.py"                      # який файл запускати
     stub: bool = False           # True — задача ще не написана, тільки позначка в плані
+    source: str = ""             # звідки задача: «Two Sum · LeetCode #1» — віддаємо credit
+    source_url: str = ""         # посилання на оригінал задачі
+    cheatsheet: str = ""         # ключ міні-довідки; порожньо — підберемо за темою
 
     @property
     def has_files(self) -> bool:
@@ -104,6 +107,10 @@ class Task:
     @property
     def clue_hints(self) -> tuple[Hint, ...]:
         return tuple(h for h in self.hints if not h.solution)
+
+    @property
+    def has_source(self) -> bool:
+        return bool(self.source)
 
 
 @dataclass(frozen=True)
@@ -179,8 +186,16 @@ def task(
     hints: list[Hint] | None = None,
     files: dict[str, str] | None = None,
     entrypoint: str = "solution.py",
+    source: str = "",
+    source_url: str = "",
+    cheatsheet: str = "",
 ) -> Task:
-    """files — додаткові файли проєкту, які з'являться поруч із розв'язком."""
+    """files — додаткові файли проєкту, які з'являться поруч із розв'язком.
+
+    source/source_url — для задач, узятих із LeetCode, Codewars тощо: повага до
+    авторів і можливість побачити оригінал англійською.
+    cheatsheet — ключ міні-довідки (див. curriculum/cheatsheets.py).
+    """
     return Task(
         id=id,
         title=title,
@@ -194,6 +209,9 @@ def task(
         hints=tuple(hints or ()),
         files=dict(files or {}),
         entrypoint=entrypoint,
+        source=source,
+        source_url=source_url,
+        cheatsheet=cheatsheet,
     )
 
 
