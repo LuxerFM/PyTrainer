@@ -1,8 +1,12 @@
-"""Малює іконку застосунку (assets/icon.png) — щоб не тримати бінарники без джерела.
+"""Малює іконку застосунку (assets/icon.png і assets/icon.ico) — щоб не
+тримати бінарники без джерела.
 
 Іконка генерується кодом, тому її легко перемалювати або підправити:
 
     .venv\\Scripts\\python.exe tools/make_icon.py
+
+`icon.png` використовує сама програма (вікно, ярлик), `icon.ico` — збірка
+PyInstaller-ом: Windows уміє брати іконку `.exe` лише з `.ico`.
 """
 
 from __future__ import annotations
@@ -13,6 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGET = ROOT / "assets" / "icon.png"
+ICO_TARGET = ROOT / "assets" / "icon.ico"
 SIZE = 256
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -79,6 +84,13 @@ def main() -> int:
         print("Не вдалося зберегти іконку")
         return 1
     print(f"Іконку збережено: {TARGET} ({image.width()}×{image.height()})")
+
+    # .ico для зібраного .exe — у трьох розмірах, щоб виглядало добре
+    # і в панелі задач, і у великих значках провідника.
+    if not image.save(str(ICO_TARGET), "ICO"):
+        print("Не вдалося зберегти .ico (потрібен Qt-плагін qico)")
+        return 1
+    print(f"Іконку для .exe збережено: {ICO_TARGET}")
     return 0
 
 

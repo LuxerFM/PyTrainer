@@ -7,3 +7,14 @@ solutions/
 docs/images/*.html
 pytrainer.db
 pytrainer-demo.db
+backups/
+pytrainer.ini
+
+# те, що створює tools/build_exe.py
+build/
+dist/
+*.egg-info/
+
+# покриття тестами
+.coverage
+coverage.txt

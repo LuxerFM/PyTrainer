@@ -1,0 +1,9 @@
+# Залежності лише для розробки — самому тренажеру потрібен тільки PySide6
+# (див. requirements.txt).
+-r requirements.txt
+
+# Збірка .exe: tools/build_exe.py
+pyinstaller>=6.10
+
+# Покриття тестами: показується в CI
+coverage[toml]>=7.6

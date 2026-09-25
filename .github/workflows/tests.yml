@@ -1,8 +1,9 @@
-name: tests
+name: ci
 
 on:
   push:
     branches: [main, master]
+    tags: ["v*"]
   pull_request:
 
 jobs:
@@ -31,7 +32,104 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
-      - name: Тести (усі 115, вікно не показується)
+      - name: Тести (вікно не показується)
         env:
           QT_QPA_PLATFORM: offscreen
         run: python -m unittest discover -s tests -v
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Системні бібліотеки для Qt
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+
+      - name: Залежності
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Покриття
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -m coverage run --source=curriculum,trainer -m unittest discover -s tests
+          python -m coverage report | tee coverage.txt
+          {
+            echo '### Покриття тестами'
+            echo '```'
+            cat coverage.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.txt
+
+  build-exe:
+    # Збірка .exe потрібна лише на push: у pull request вона б тільки
+    # витрачала хвилини й нічого не перевіряла.
+    if: github.event_name == 'push'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Залежності для збірки
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Зібрати PyTrainer.exe
+        run: python tools/build_exe.py
+
+      - name: Перевірити, що .exe справді запускається
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          .\dist\PyTrainer.exe --demo --screenshot smoke.png
+          if (-not (Test-Path smoke.png)) { throw "Застосунок не зробив знімок — .exe не працює" }
+          Get-Item dist\PyTrainer.exe | Select-Object Name, @{n="МБ";e={[math]::Round($_.Length/1MB,1)}}
+
+      - name: Архів для завантаження
+        run: Compress-Archive -Path dist\* -DestinationPath PyTrainer-windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PyTrainer-windows
+          path: |
+            PyTrainer-windows.zip
+            dist/PyTrainer.exe
+
+  release:
+    # Тег v1.0.0 → готовий .exe у релізі, щоб людині не треба було
+    # мати Python узагалі.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [unittest, build-exe]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: PyTrainer-windows
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: PyTrainer-windows.zip
+          generate_release_notes: true
+          body: |
+            Windows: завантаж `PyTrainer-windows.zip`, розпакуй і запусти
+            `PyTrainer.exe`. Прогрес ляже поруч із .exe — теку можна
+            переносити цілком.
