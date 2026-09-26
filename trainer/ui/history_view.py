@@ -1,13 +1,14 @@
-"""Вкладка «Історія»: стрічка спроб задачі.
+""""Історія" ("History") tab: the task's attempt strip.
 
-Витягнуто з `TaskPanel` (зріз 5 розпилу, модуль 4). Контролер тримає
-вказівник на панель (`p`) — віджети вкладки лишаються у панелі.
+Extracted from `TaskPanel` (split slice 5, module 4). The controller holds a
+pointer to the panel (`p`) — the tab's widgets stay in the panel.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from PySide6.QtCore import QCoreApplication
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QListWidgetItem
 
@@ -18,8 +19,12 @@ if TYPE_CHECKING:
     from .task_panel import TaskPanel
 
 
+def _tr(text: str) -> str:
+    return QCoreApplication.translate("HistoryView", text)
+
+
 class HistoryView:
-    """Рендер вкладки історії спроб."""
+    """History-tab renderer."""
 
     def __init__(self, panel: TaskPanel) -> None:
         self.p = panel
@@ -29,24 +34,26 @@ class HistoryView:
         p = self.p
         p.history_list.clear()
         if not rows:
-            p.history_summary.setText("Ще жодного запуску цієї задачі.")
+            p.history_summary.setText(_tr("Ще жодного запуску цієї задачі."))
             return
 
+        status = _tr("здано ✓") if solved else _tr("ще не здана")
         p.history_summary.setText(
-            f"Задача: {'здано ✓' if solved else 'ще не здана'} · "
-            f"XP: {best_xp} · підказок відкрито: {hints_used} · "
-            f"час над задачею: {format_time(active_seconds)}"
+            _tr("Задача: {status} · XP: {xp} · підказок відкрито: {hints} · "
+                "час над задачею: {time}").format(
+                    status=status, xp=best_xp, hints=hints_used,
+                    time=format_time(active_seconds))
         )
         for row in rows:
             when = row["created_at"][:16].replace("T", " ")
             if not row["with_checks"]:
-                # звичайний запуск: не невдача, просто проба коду
-                item = QListWidgetItem(f"{when} · ▸ запуск")
+                # plain run: not a failure, just a code tryout
+                item = QListWidgetItem(f"{when} · ▸ {_tr('запуск')}")
                 item.setForeground(QColor(Colors.muted))
             else:
                 mark = "✓" if row["ok"] else "✕"
                 xp = f' · +{row["xp"]} XP' if row["xp"] else ""
-                item = QListWidgetItem(f"{when} · {mark} перевірка{xp}")
+                item = QListWidgetItem(f"{when} · {mark} {_tr('перевірка')}{xp}")
                 item.setForeground(
                     QColor(Colors.success if row["ok"] else Colors.error)
                 )

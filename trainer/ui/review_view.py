@@ -1,14 +1,14 @@
-"""Вкладка «Рев'ю»: картки розбору коду з кнопками переходу до рядка.
+"""The "Рев'ю" ("Review") tab: code-review cards with line-jump buttons.
 
-Витягнуто з `TaskPanel` (зріз 5 розпилу, модуль 2). Контролер тримає
-вказівник на панель (`p`) — стан карток лишається у панелі.
+Extracted from `TaskPanel` (split slice 5, module 2). The controller holds a
+pointer to the panel (`p`) — card state stays in the panel.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
 
 from ..core.codereview import NOT_REVIEWED
@@ -20,14 +20,18 @@ if TYPE_CHECKING:
     from .task_panel import TaskPanel
 
 
+def _tr(text: str) -> str:
+    return QCoreApplication.translate("ReviewView", text)
+
+
 class ReviewView:
-    """Рендер вкладки розбору коду."""
+    """Code-review tab renderer."""
 
     def __init__(self, panel: TaskPanel) -> None:
         self.p = panel
 
     def show_review(self, review: CodeReview) -> None:
-        """Показує розбір коду: зауваження з номерами рядків і одну похвалу."""
+        """Shows the code review: remarks with line numbers and one praise."""
         from .task_panel import TAB_REVIEW
 
         p = self.p
@@ -40,11 +44,12 @@ class ReviewView:
             p._add_card(self.review_card(remark), p.review_box)
 
         issues = len(review.issues)
-        p.tabs.setTabText(TAB_REVIEW, f"Рев'ю · {issues}" if issues else "Рев'ю")
-        p.review_button.setText("Розібрати ще раз")
+        tab = _tr("Рев'ю · {n}").format(n=issues) if issues else _tr("Рев'ю")
+        p.tabs.setTabText(TAB_REVIEW, tab)
+        p.review_button.setText(_tr("Розібрати ще раз"))
 
     def reset_review(self) -> None:
-        """Забуває попередній розбір: для нової задачі він був би брехнею."""
+        """Forgets the previous review: for a new task it would be a lie."""
         from .task_panel import TAB_REVIEW
 
         p = self.p
@@ -52,12 +57,12 @@ class ReviewView:
         p.review_summary.setText(NOT_REVIEWED)
         p.review_summary.setObjectName("Subtle")
         p._repolish(p.review_summary)
-        p.review_button.setText("Розібрати код")
-        p.tabs.setTabText(TAB_REVIEW, "Рев'ю")
+        p.review_button.setText(_tr("Розібрати код"))
+        p.tabs.setTabText(TAB_REVIEW, _tr("Рев'ю"))
 
     @property
     def review_cards(self) -> list[QFrame]:
-        """Картки розбору — щоб тести могли їх порахувати."""
+        """Review cards — so tests can count them."""
         p = self.p
         return [
             widget
@@ -79,16 +84,16 @@ class ReviewView:
             name=remark.title,
             detail=remark.advice,
             state="ok" if remark.is_praise else "info",
-            tooltip=f"Рядок {remark.line}" if remark.line else "",
+            tooltip=_tr("Рядок {n}").format(n=remark.line) if remark.line else "",
             extra=self.line_button(remark.line),
         )
 
     def line_button(self, line: int) -> QWidget | None:
-        """Кнопка «перейти до рядка» — з зауваження одразу в код."""
+        """A "jump to line" button — from the remark straight into code."""
         if not line:
             return None
         p = self.p
-        button = QPushButton(f"↪  Рядок {line}")
+        button = QPushButton(_tr("↪  Рядок {n}").format(n=line))
         button.setObjectName("Ghost")
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.clicked.connect(

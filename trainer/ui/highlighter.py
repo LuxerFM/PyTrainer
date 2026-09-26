@@ -1,8 +1,8 @@
-"""Підсвітка синтаксису Python.
+"""Python syntax highlighting.
 
-Ідея проста: описуємо список правил «регулярний вираз → колір» і на кожному
-рядку фарбуємо все, що підходить. Правила застосовуються по порядку, тому
-код, рядки і коментарі стоять у списку останніми — вони перемагають.
+The idea is simple: describe a "regex → colour" rule list and paint every
+line that matches. Rules apply in order, so code, strings and comments stand
+last in the list — they win.
 """
 
 from PySide6.QtCore import QRegularExpression
@@ -34,7 +34,7 @@ def _format(colour: str, *, bold: bool = False, italic: bool = False) -> QTextCh
 
 
 def build_rules() -> list[tuple[QRegularExpression, QTextCharFormat]]:
-    """Повертає правила підсвітки у порядку застосування."""
+    """Returns the highlight rules in application order."""
     keyword = _format(Colors.syn_keyword, bold=True)
     builtin = _format(Colors.syn_builtin)
     self_kw = _format(Colors.syn_self, italic=True)
@@ -53,7 +53,7 @@ def build_rules() -> list[tuple[QRegularExpression, QTextCharFormat]]:
         (QRegularExpression(r"(?<=\bdef\s)\w+"), func),
         (QRegularExpression(r"(?<=\bclass\s)\w+"), func),
         (QRegularExpression(r"[\+\-\*/%=<>!&|^~]+"), _format(Colors.text)),
-        # останні три перекривають усе інше — так і треба
+        # the last three override everything else — by design
         (QRegularExpression(r'"""(?:.|\n)*?"""|\'\'\'(?:.|\n)*?\'\'\''), string),
         (QRegularExpression(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\''), string),
         (QRegularExpression(r"#[^\n]*"), comment),
@@ -62,13 +62,13 @@ def build_rules() -> list[tuple[QRegularExpression, QTextCharFormat]]:
 
 
 class PythonHighlighter(QSyntaxHighlighter):
-    """Фарбує код Python у QPlainTextEdit."""
+    """Paints Python code in a QPlainTextEdit."""
 
     def __init__(self, document) -> None:
         super().__init__(document)
         self._rules = build_rules()
 
-    def highlightBlock(self, text: str) -> None:  # noqa: N802 (назва з Qt)
+    def highlightBlock(self, text: str) -> None:  # noqa: N802 (Qt-given name)
         for pattern, fmt in self._rules:
             iterator = pattern.globalMatch(text)
             while iterator.hasNext():
