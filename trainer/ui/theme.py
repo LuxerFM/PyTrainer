@@ -10,6 +10,8 @@
 """
 
 import re
+import sys
+from pathlib import Path
 from string import Template
 
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
@@ -136,9 +138,54 @@ PROSE_FONTS = ("Segoe UI Variable Text", "Segoe UI", "Inter", "Noto Sans",
 
 _FAMILY_CACHE: dict[tuple[str, ...], str] = {}
 
+_BUNDLED_FILES = ("Inter-Regular.otf", "Inter-Bold.otf",
+                  "JetBrainsMono-Regular.ttf", "JetBrainsMono-Bold.ttf")
+_BUNDLED_LOADED = False
+
+
+def _fonts_dir() -> Path:
+    """Bundled-fonts folder — works from code and from the built .exe."""
+    base = getattr(sys, "_MEIPASS", None)
+    root = Path(base) if base else Path(__file__).resolve().parents[2]
+    return root / "assets" / "fonts"
+
+
+def load_bundled_fonts() -> list[str]:
+    """Registers bundled Inter + JetBrains Mono and prefers them.
+
+    Why bundled: system fonts vary per machine (and CI/offscreen images may
+    lack Cyrillic glyphs entirely — hence tofu screenshots). Bundled fonts
+    render the same everywhere, in both Ukrainian and English. Safe to call
+    any number of times; before a QApplication exists it does nothing and
+    the system-font fallback applies.
+    """
+    global _BUNDLED_LOADED, MONO_FONTS, UI_FONTS, PROSE_FONTS
+    if _BUNDLED_LOADED:
+        return []
+    if QApplication.instance() is None:
+        return []
+    folder = _fonts_dir()
+    families: list[str] = []
+    if folder.is_dir():
+        for name in _BUNDLED_FILES:
+            fid = QFontDatabase.addApplicationFont(str(folder / name))
+            if fid != -1:
+                families.extend(QFontDatabase.applicationFontFamilies(fid))
+    for family in families:
+        if "Mono" in family:
+            if family not in MONO_FONTS:
+                MONO_FONTS = (family,) + MONO_FONTS
+        elif family not in UI_FONTS:
+            UI_FONTS = (family,) + UI_FONTS
+            PROSE_FONTS = (family,) + PROSE_FONTS
+    _BUNDLED_LOADED = True
+    _FAMILY_CACHE.clear()
+    return families
+
 
 def pick_font(candidates: tuple[str, ...], size: int) -> QFont:
     """Повертає перший доступний шрифт зі списку."""
+    load_bundled_fonts()
     available = set(QFontDatabase.families())
     for name in candidates:
         if name in available:
@@ -152,6 +199,7 @@ def family_name(candidates: tuple[str, ...]) -> str:
     Потрібно для `QTextBrowser`: там стилі задаються текстом, а не QFont.
     Результат кешуємо: QFontDatabase.families() — не найдешевша операція.
     """
+    load_bundled_fonts()
     cached = _FAMILY_CACHE.get(candidates)
     if cached is not None:
         return cached

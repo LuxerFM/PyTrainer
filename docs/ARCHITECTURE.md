@@ -414,9 +414,13 @@ window on a demo database, waits for a real check result and saves
 ## Fonts and text
 
 The task panel deliberately uses **two fonts**: prose (statement, explanation,
-reference) and monospace (code). `theme.prose_family()` and
-`theme.mono_family()` return the first available system font and cache the
-result; `_wrap_html()` substitutes it into HTML for `QTextBrowser`.
+reference) and monospace (code). Both ship with the app (`assets/fonts/`:
+Inter + JetBrains Mono, OFL-licensed) and are registered via
+`theme.load_bundled_fonts()` — so rendering is identical on every machine, in
+both Ukrainian and English. System fonts stay as fallback only.
+`theme.prose_family()` and `theme.mono_family()` return the first available
+font and cache the result; `_wrap_html()` substitutes it into HTML for
+`QTextBrowser`.
 
 Hints and cheatsheets are stored as **plain text**, not HTML:
 `task_panel.plain_to_html()` decides by itself which lines look like code
