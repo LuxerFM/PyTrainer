@@ -37,13 +37,18 @@ class FileSync:
 
     def __init__(self, window: MainWindow) -> None:
         self.w = window
-        self._last_write = 0.0
+        self._last_write: float | None = None
 
     # -- тротлінг --
 
     def due(self, force: bool) -> bool:
-        """Чи час писати дзеркала на диск (або явна дія з `force=True`)."""
-        if force:
+        """Чи час писати дзеркала на диск (або явна дія з `force=True`).
+
+        Перший запис дозволено завжди: `monotonic()` у свіжому контейнері
+        може бути меншим за інтервал (рахунок іде від старту системи,
+        а не від епохи) — інакше файл не створиться взагалі.
+        """
+        if force or self._last_write is None:
             return True
         return time.monotonic() - self._last_write >= FILES_WRITE_INTERVAL
 

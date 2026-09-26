@@ -80,6 +80,10 @@ jobs:
     # витрачала хвилини й нічого не перевіряла.
     if: github.event_name == 'push'
     runs-on: windows-latest
+    env:
+      # Консоль Windows-ранера — cp1252, а тренажер друкує українською:
+      # без цього збірка й .exe падають з UnicodeEncodeError.
+      PYTHONUTF8: 1
     steps:
       - uses: actions/checkout@v4
 
