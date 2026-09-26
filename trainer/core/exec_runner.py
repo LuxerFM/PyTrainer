@@ -1,21 +1,21 @@
-"""Виконання чужого файлу тим самим інтерпретатором — режим `--exec-runner`.
+"""Running someone else's file with the same interpreter — the `--exec-runner` mode.
 
-Навіщо це окремий режим. Код користувача завжди виконується в **окремому**
-процесі: інакше `while True` у розв'язку повісив би весь тренажер. Поки
-застосунок запускається з коду, окремий процес — це просто `python`. Але в
-зібраному `.exe` `sys.executable` вказує на **сам тренажер**, і тоді звичний
-запуск робить не те, що треба: замість розв'язку стартує друге вікно
-PyTrainer. Вердикт не приходить ніколи, процес переживає таймаут і тримає
-тимчасові файли, тому їх ще й не вдається прибрати.
+Why a separate mode. User code always runs in a **separate** process: otherwise
+`while True` in a solution would hang the whole trainer. While the app launches
+from code, a separate process is just `python`. But in the built `.exe`
+`sys.executable` points at **the trainer itself**, and then the usual launch
+does the wrong thing: a second PyTrainer window starts instead of the solution.
+The verdict never arrives, the process outlives the timeout and holds temp
+files, so they cannot even be cleaned up.
 
-Тому `.exe` запускає сам себе з прапорцем `--exec-runner`: цей режим виконує
-вказаний файл як `__main__` — вбудованим інтерпретатором, без Qt і без вікна —
-і повертає його код виходу. Для runner-а різниці не видно: там, де раніше
-був `python`, тепер `.exe`, і код користувача працює так само.
+So the `.exe` launches itself with `--exec-runner`: this mode runs the given
+file as `__main__` — with the embedded interpreter, no Qt, no window — and
+returns its exit code. The runner sees no difference: where `python` was, now
+is `.exe`, and user code works the same.
 
-Дивись також `trainer/cli.py` — там порядок, у якому цей режим перевіряється
-раніше за імпорт PySide6, і `ensure_streams()` — чому без правки кодування
-український вивід у `.exe` стає сміттям.
+See also `trainer/cli.py` — the order in which this mode is checked ahead of
+the PySide6 import, and `ensure_streams()` — why without the encoding fix
+Ukrainian output in the `.exe` turns to garbage.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ FLAG = "--exec-runner"
 
 
 def script_from(argv: list[str]) -> str:
-    """Файл, який треба виконати (порожній рядок, якщо його не передали)."""
+    """The file to run (empty string if none was given)."""
     if FLAG not in argv:
         return ""
     for item in argv[argv.index(FLAG) + 1:]:
@@ -42,7 +42,7 @@ def script_from(argv: list[str]) -> str:
 
 
 def _attach(index: int, mode: str) -> object:
-    """Текстовий потік на справжній дескриптор 0, 1 або 2."""
+    """A text stream on the real descriptor 0, 1 or 2."""
     try:
         buffering = 1 if mode == "w" else -1
         return os.fdopen(index, mode, encoding="utf-8", buffering=buffering, closefd=False)
@@ -51,19 +51,19 @@ def _attach(index: int, mode: str) -> object:
 
 
 def ensure_streams() -> None:
-    """Робить стандартні потоки UTF-8 — інакше кирилиця перетворюється в сміття.
+    """Makes std streams UTF-8 — otherwise Cyrillic turns to garbage.
 
-    Тут дві різні біди з одним коренем. Віконний `.exe` може лишити `sys.stdout`
-    порожнім — тоді `print` у коді користувача просто зникає, а не потрапляє в
-    файл, який читає runner. А якщо не лишити, PyInstaller приєднує потоки з
-    ANSI-кодуванням системи (у нас cp1251) — і тоді весь український вивід
-    перетворюється на «??????». Runner читає цей вивід як UTF-8, тому кодування
-    мусить збігатись **завжди**: інакше «код виводить не те» виглядало б як
-    помилка в розв'язку, якої там немає.
+    Two different troubles with one root. A windowed `.exe` may leave
+    `sys.stdout` empty — then `print` in user code just vanishes instead of
+    landing in the file the runner reads. And if not left, PyInstaller
+    attaches streams with the system ANSI encoding (here cp1251) — and then
+    all Ukrainian output turns into "??????". The runner reads that output as
+    UTF-8, so the encodings must match **always**: otherwise "code prints the
+    wrong thing" would look like a solution bug that is not there.
 
-    Кодування перевіряємо лише в зібраному `.exe`: у консолі ж із коду воно
-    своє й правильне, і переводити його в UTF-8 навмання означало б зіпсувати
-    кирилицю в старому консольному вікні Windows.
+    Encoding is fixed only in the built `.exe`: in a console run from code it
+    is its own and correct, and forcing it to UTF-8 at random would corrupt
+    Cyrillic in an old Windows console window.
     """
     frozen = is_frozen()
     for index, name, mode in ((0, "stdin", "r"), (1, "stdout", "w"), (2, "stderr", "w")):
@@ -79,13 +79,13 @@ def ensure_streams() -> None:
         try:
             stream.reconfigure(encoding="utf-8", errors="strict")
         except (AttributeError, OSError, ValueError, io.UnsupportedOperation):
-            # Не текстовий потік, який уміє переналаштуватись (тести, підмінені
-            # потоки) — лишаємо як є, це не той випадок, який ми лікуємо.
+            # Not a text stream that can reconfigure (tests, swapped streams) —
+            # leave as is; that is not the case we are healing.
             pass
 
 
 def _exit_code(code: object) -> int:
-    """Код виходу з `SystemExit` — так само, як це робить CPython."""
+    """Exit code from `SystemExit` — the way CPython does it."""
     if code is None:
         return 0
     if isinstance(code, int):
@@ -95,7 +95,7 @@ def _exit_code(code: object) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Виконує файл із `--exec-runner` і повертає код його виходу."""
+    """Runs the `--exec-runner` file and returns its exit code."""
     argv = list(sys.argv if argv is None else argv)
     script = script_from(argv)
     ensure_streams()
@@ -103,9 +103,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{FLAG}: не вказано файл для виконання", file=sys.stderr)
         return 2
 
-    # Усе як у звичайного `python файл.py`: абсолютний шлях у sys.argv[0],
-    # папка файла першою в sys.path (тому `import utils` зі своєї ж теки
-    # працює) і та сама тека як робоча.
+    # Just like a plain `python file.py`: absolute path in sys.argv[0],
+    # the file's folder first in sys.path (so `import utils` from its own
+    # folder works) and the same folder as working dir.
     arguments = [item for item in argv[argv.index(FLAG) + 1:] if not item.startswith("-")]
     script = os.path.abspath(script)
     folder = os.path.dirname(script)
@@ -119,10 +119,10 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as stop:
         return _exit_code(stop.code)
     except BaseException:
-        # Помилку друкуємо самі, а не віддаємо її "назовні": у зібраному
-        # віконному .exe необроблений виняток перетворюється на діалог із
-        # кнопкою «ОК». Діалог чекав би на клік, тому звичайна помилка в
-        # розв'язку виглядала б як таймаут — і без пояснення.
+        # We print the error ourselves instead of letting it "out": in the
+        # built windowed .exe an unhandled exception becomes a dialog with an
+        # "OK" button. The dialog would wait for a click, so an ordinary
+        # solution error would look like a timeout — with no explanation.
         traceback.print_exc()
         return 1
     return 0

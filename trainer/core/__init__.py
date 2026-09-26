@@ -1,1 +1,1 @@
-"""Логіка без інтерфейсу: запуск і перевірка коду, робота з даними."""
+"""Logic without UI: running and checking code, working with data."""

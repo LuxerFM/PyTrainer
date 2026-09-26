@@ -1,7 +1,7 @@
-"""Правила навчання: XP, розклад повторень і серія днів.
+"""Learning rules: XP, review schedule and day streak.
 
-Тут тільки сухі функції без бази даних та інтерфейсу — тому їх легко
-перевіряти тестами й змінювати, не чіпаючи решту застосунку.
+Only dry functions here, no database and no UI — so tests cover them easily
+and they change without touching the rest of the app.
 """
 
 from __future__ import annotations
@@ -9,24 +9,24 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Protocol
 
-# Скільки XP «з'їдає» кожна відкрита підказка
+# How much XP each opened hint "eats"
 HINT_PENALTY = 0.15
-# Нижня межа: навіть з усіма підказками задача дає частину XP
+# Floor: even with all hints a task grants some XP
 MIN_FACTOR = 0.4
-# За повторне здавання задачі — лише частина XP
+# Re-passing a task grants only part of the XP
 REPEAT_FACTOR = 0.3
-# Розклад повторень у днях: 1 → 3 → 7 → 30 (потім задача вважається засвоєною)
+# Review schedule in days: 1 → 3 → 7 → 30 (then the task counts as retained)
 INTERVALS = (1, 3, 7, 30)
 
-# Скільки «підказок» зараховуємо, якщо людина скористалась повним розв'язком
+# How many "hints" a full-solution use counts as
 SOLUTION_HINT_LEVELS = 3
 
-# Скільки від базового XP дає одне успішне повторення (множиться на глибину інтервалу)
+# How much of base XP one successful review grants (times interval depth)
 REVIEW_BONUS_RATE = 0.2
 
 
 class HasBaseXp(Protocol):
-    """Мінімум, який нам потрібен від задачі."""
+    """The minimum we need from a task."""
 
     base_xp: int
 
@@ -38,11 +38,10 @@ def xp_for(
     first_time: bool = True,
     solution_used: bool = False,
 ) -> int:
-    """Скільки XP дати за здану задачу.
+    """How much XP a passed task grants.
 
-    Якщо людина скористалась повним розв'язком, це рахується як мінімум
-    SOLUTION_HINT_LEVELS підказок — інакше вставлений розв'язок коштував би
-    стільки ж XP, як самостійна робота.
+    Using the full solution counts as at least SOLUTION_HINT_LEVELS hints —
+    otherwise a pasted solution would cost as much XP as working alone.
     """
     effective = max(hints_used, SOLUTION_HINT_LEVELS) if solution_used else hints_used
     factor = max(MIN_FACTOR, 1 - HINT_PENALTY * effective)
@@ -58,11 +57,11 @@ def review_xp(
     hints_used: int = 0,
     solution_used: bool = False,
 ) -> int:
-    """XP за повторне здавання задачі.
+    """XP for re-passing a task.
 
-    Чим довший інтервал витримав — тим цінніше згадати: перше повторення
-    дає 20% базового XP, друге — 40%, третє — 60%, четверте — 80%.
-    Без цього повторювати було б невигідно порівняно з бігом уперед.
+    The longer the survived interval, the more recall is worth: the first
+    review grants 20% of base XP, the second 40%, the third 60%, the fourth
+    80%. Without this, reviewing would pay worse than running ahead.
     """
     effective = max(hints_used, SOLUTION_HINT_LEVELS) if solution_used else hints_used
     factor = max(MIN_FACTOR, 1 - HINT_PENALTY * effective)
@@ -71,10 +70,10 @@ def review_xp(
 
 
 def next_interval(index: int, ok: bool) -> tuple[int, int | None]:
-    """Наступний інтервал повторення.
+    """Next review interval.
 
-    Повертає (новий_індекс, днів_до_повторення). Днів = None означає,
-    що задача засвоєна і з черги повторень зникає.
+    Returns (new_index, days_until_review). Days = None means the task is
+    retained and leaves the review queue.
     """
     if not ok:
         return 0, INTERVALS[0]
@@ -85,7 +84,7 @@ def next_interval(index: int, ok: bool) -> tuple[int, int | None]:
 
 
 def needs_review(*, solved: bool, attempts: int, solution_used: bool = False) -> bool:
-    """Чи треба повернути задачу на повторення."""
+    """Whether the task should return to review."""
     if not solved:
         return True
     if attempts > 1:
@@ -99,10 +98,10 @@ def due_date(days: int, today: date | None = None) -> str:
 
 
 def streak_from_days(days: list[str], today: date | None = None) -> int:
-    """Серія днів поспіль із активністю.
+    """Streak of active days in a row.
 
-    Сьогоднішній день зараховується, якщо активність уже була; якщо ні —
-    серія рахується від учора, щоб не «згорала» до вечора.
+    Today counts if there was activity already; if not, the streak counts
+    from yesterday so it does not "burn out" before evening.
     """
     today = today or date.today()
     unique = sorted({date.fromisoformat(day) for day in days}, reverse=True)

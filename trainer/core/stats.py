@@ -1,7 +1,7 @@
-"""Статистика по темах: де ти вже впевнений, а де провалюєшся.
+"""Per-topic stats: where you are already confident and where you fail.
 
-Мета цього модуля — не «показати красиві цифри», а знайти теми, які треба
-повторити. Тому головна функція тут — weak_topics().
+This module's goal is not "pretty numbers" but finding topics to repeat.
+So the main function here is weak_topics().
 """
 
 from __future__ import annotations
@@ -10,14 +10,14 @@ from dataclasses import dataclass
 
 from curriculum import study_tasks, topic_of
 
-# Тема вважається слабкою, якщо є достатньо спроб і низький відсоток успіху
+# A topic counts as weak with enough attempts and a low pass rate
 WEAK_MIN_ATTEMPTS = 3
 WEAK_MAX_RATE = 0.6
 
 
 @dataclass
 class TopicStat:
-    """Успішність однієї теми."""
+    """One topic's pass rate."""
 
     name: str
     done: int = 0
@@ -28,7 +28,7 @@ class TopicStat:
 
     @property
     def success_rate(self) -> float:
-        """Частка успішних спроб (1.0 — усе з першого разу)."""
+        """Share of passed attempts (1.0 — everything first try)."""
         return self.passes / self.attempts if self.attempts else 1.0
 
     @property
@@ -41,7 +41,7 @@ class TopicStat:
 
 
 def topic_stats(rows) -> list[TopicStat]:
-    """Складає статистику по темах із рядків бази даних."""
+    """Builds per-topic stats from database rows."""
     stats: dict[str, TopicStat] = {}
 
     for task in study_tasks():
@@ -62,16 +62,17 @@ def topic_stats(rows) -> list[TopicStat]:
 
 
 def weak_topics(rows) -> list[TopicStat]:
-    """Теми, які варто повторити: багато спроб і мало успіху."""
+    """Topics worth repeating: many attempts, little success."""
     weak = [stat for stat in topic_stats(rows) if stat.is_weak]
     return sorted(weak, key=lambda item: item.success_rate)
 
 
 def overall(rows) -> dict:
-    """Загальні цифри для верхніх карток статистики.
+    """Totals for the top stats cards.
 
-    Ключова різниця: «здано» — це задача, яку ти вже розв'язав, а «утримано» —
-    та, що більше не потребує повторень. Друга цифра чесніша щодо знань.
+    The key difference: "passed" is a task you already solved, while
+    "retained" needs no more reviews. The second number is more honest about
+    knowledge.
     """
     tasks = topic_stats(rows)
     ready_ids = {task.id for task in study_tasks()}

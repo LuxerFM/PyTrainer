@@ -1,17 +1,17 @@
-"""Холодне повторення: випадкова вже здана задача — без підказок і розв'язку.
+"""Cold review: a random already-passed task — no hints, no solution.
 
-Найдешевший спосіб обманути себе — упізнати власний код. Коли задача вже
-здана, її розв'язок лежить у редакторі, підказки відкриті, і здається, що
-ти все пам'ятаєш. Користь дає протилежне: дістати рішення з пам'яті без
-опори. Тому цей режим бере випадкову здану задачу, ховає підказки й розв'язок
-і обмежує час.
+The cheapest way to fool yourself is recognising your own code. Once a task is
+passed, its solution sits in the editor, hints are open, and it feels like you
+remember everything. The opposite pays off: pulling the solution from memory
+with no support. So this mode takes a random passed task, hides hints and
+solution, and caps the time.
 
-Черговість проста: спершу те, що вже просить повторення (воно от-от
-забудеться), а якщо черга порожня — будь-яка здана задача: несподівана
-згадка тримає знання краще, ніж ще один перегляд знайомого розв'язку.
+The order is simple: first what already asks for review (it is about to be
+forgotten), and if the queue is empty — any passed task: a surprise recall
+holds knowledge better than one more look at a familiar solution.
 
-Модуль не знає ні про Qt, ні про SQLite: йому достатньо методів `statuses()`
-і `due_reviews()`. Тому вибір легко перевіряти тестами без вікна.
+The module knows neither Qt nor SQLite: `statuses()` and `due_reviews()`
+methods are enough. So the choice is easy to test without a window.
 """
 
 from __future__ import annotations
@@ -22,15 +22,15 @@ from dataclasses import dataclass
 from curriculum import study_tasks
 from curriculum.schema import Task
 
-# Скільки хвилин дається на холодне згадування
+# Minutes granted for a cold recall
 COLD_MINUTES = 10
-# …але коротша задача має дістати хоч трохи часу на роздуми
+# …but a shorter task still deserves some thinking time
 MIN_COLD_MINUTES = 3
 
 
 @dataclass(frozen=True)
 class ColdReview:
-    """Що саме дістали з пам'яті, звідки воно взялось і скільки на нього часу."""
+    """What exactly was recalled, where it came from and how much time it gets."""
 
     task: Task
     from_queue: bool = False
@@ -42,10 +42,10 @@ class ColdReview:
 
 
 def solved_tasks(db, *, exclude: str | None = None) -> list[Task]:
-    """Здані задачі, які має сенс згадувати.
+    """Passed tasks worth recalling.
 
-    Пункти поза тренажером (venv, Git, pytest) не рахуються: у них немає ні
-    коду, ні перевірок — згадувати там нічого.
+    Off-trainer items (venv, Git, pytest) do not count: they have neither
+    code nor checks — nothing to recall there.
     """
     statuses = db.statuses()
     return [
@@ -56,17 +56,17 @@ def solved_tasks(db, *, exclude: str | None = None) -> list[Task]:
 
 
 def due_tasks(db, *, exclude: str | None = None) -> list[Task]:
-    """Здані задачі, які вже час повторити."""
+    """Passed tasks already due for review."""
     due_ids = {row["task_id"] for row in db.due_reviews()}
     return [task for task in solved_tasks(db, exclude=exclude) if task.id in due_ids]
 
 
 def cold_seconds(task: Task) -> int:
-    """Скільки секунд дається на холодне згадування.
+    """How many seconds a cold recall gets.
 
-    Не більше COLD_MINUTES: у незнайомій роботі легко просидіти годину, а
-    користь від цього не росте. Не менше MIN_COLD_MINUTES: навіть на просту
-    задачу треба час, щоб зібратися з думками.
+    At most COLD_MINUTES: in unfamiliar work it is easy to sit an hour, and
+    the benefit does not grow. At least MIN_COLD_MINUTES: even a simple task
+    needs time to collect your thoughts.
     """
     minutes = min(COLD_MINUTES, max(MIN_COLD_MINUTES, task.minutes))
     return minutes * 60
@@ -74,10 +74,10 @@ def cold_seconds(task: Task) -> int:
 
 def pick_cold_task(db, *, exclude: str | None = None,
                    rng: random.Random | None = None) -> ColdReview | None:
-    """Вибирає задачу для холодного повторення (None — якщо зданих немає).
+    """Picks a cold-review task (None — if nothing is passed).
 
-    `exclude` — id задачі, яка зараз відкрита: повторювати те, що перед
-    очима, немає сенсу. `rng` передають тести, щоб вибір був передбачуваним.
+    `exclude` — id of the currently open task: repeating what is before your
+    eyes makes no sense. Tests pass `rng` so the pick is predictable.
     """
     rng = rng or random.Random()
     due = due_tasks(db, exclude=exclude)

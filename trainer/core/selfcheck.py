@@ -1,22 +1,22 @@
-"""Самоперевірка: `PyTrainer.exe --self-test` — чи справді працює перевірка коду.
+"""Self-test: `PyTrainer.exe --self-test` — does code checking really work.
 
-Вікно малюється навіть тоді, коли виконання коду зламане. Саме так і сталося:
-у зібраному `.exe` `sys.executable` вказує на сам тренажер, тому кожна
-перевірка запускала друге вікно PyTrainer, вердикт не приходив ніколи, а
-тимчасові файли ще й не прибирались. Жоден тест з коду такого не побачить —
-проблема живе лише в зібраному `.exe`. Тому CI більше не «просто відкриває»
-`.exe`, а просить його виконати код і показати вердикт.
+The window draws even when code execution is broken. That is exactly what
+happened: in the built `.exe` `sys.executable` points at the trainer itself,
+so every check launched a second PyTrainer window, the verdict never arrived,
+and temp files never got cleaned up. No test run from code can see that — the
+problem lives only in the built `.exe`. So CI no longer "just opens" the
+`.exe` but asks it to run code and show a verdict.
 
-Перевіряються три речі, кожна з яких ламалась би окремо:
+Three things are checked, each of which would break on its own:
 
-1. правильний розв'язок проходить **усі** перевірки — і перевірки коду,
-   і перевірки виводу (серед них «вивід рівно такий», яка на Windows
-   залежить від переводу рядків);
-2. зламаний розв'язок **не** проходить, і саме та перевірка, яка мусить;
-3. `while True` зупиняється таймаутом, а не висить вічно.
+1. the correct solution passes **all** checks — both code checks and output
+   checks (including "output exactly this", which on Windows depends on line
+   endings);
+2. the broken solution does **not** pass, and exactly the check that must;
+3. `while True` is stopped by the timeout instead of hanging forever.
 
-Кроки не залежать від змісту навчальної програми: розв'язок узятий тут же,
-щоб самоперевірка не падала через перейменовану задачу.
+The steps do not depend on curriculum content: the solution lives right here
+so the self-test never falls over a renamed task.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ DEFAULT_REPORT = "selftest.json"
 
 INPUT = "Світ\n"
 
-#: Код, у якому є і функція, і ввід, і вивід — тобто всі види перевірок.
+#: Code with a function, input and output — i.e. all check kinds.
 SCRIPT = """\
 name = input()
 
@@ -49,10 +49,10 @@ print("Привіт,", name)
 print(add(2, 3))
 """
 
-#: Той самий код із помилкою в одному рядку: `-` замість `+`.
+#: The same code with a one-line bug: `-` instead of `+`.
 BROKEN = SCRIPT.replace("return a + b", "return a - b")
 
-#: Класика, від якої тренажер мусить захищатись.
+#: The classic the trainer must defend against.
 HANG = "while True:\n    pass\n"
 
 SUM_CHECK = "функція add рахує суму"
@@ -61,7 +61,7 @@ OUTPUT_CHECK = "виводить рівно два рядки"
 
 
 def checks():
-    """Перевірки для самоперевірки — ті самі види, що й у справжніх задачах."""
+    """Self-test checks — the same kinds as in real tasks."""
     from curriculum.schema import code, stdout
 
     return [
@@ -73,7 +73,7 @@ def checks():
 
 @dataclass
 class SelfCheckStep:
-    """Один крок самоперевірки — що перевіряли і чим це скінчилось."""
+    """One self-test step — what was checked and how it ended."""
 
     name: str
     ok: bool
@@ -85,19 +85,19 @@ class SelfCheckStep:
 
 @dataclass
 class SelfCheckReport:
-    """Результат самоперевірки цілком."""
+    """The whole self-test result."""
 
     frozen: bool = False
     steps: list[SelfCheckStep] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
-        """True, лише якщо кроки взагалі були і всі вони пройшли."""
+        """True only if there were steps at all and all of them passed."""
         return bool(self.steps) and all(step.ok for step in self.steps)
 
     @property
     def mode(self) -> str:
-        """Звідки запущено: зібраний `.exe` чи звичайний Python."""
+        """Where it runs from: the built `.exe` or plain Python."""
         return "exe" if self.frozen else "python"
 
     def as_dict(self) -> dict:
@@ -123,7 +123,7 @@ def _one_line(text: str, limit: int = 120) -> str:
 
 
 def _describe(result: RunResult) -> str:
-    """Короткий опис вердикту — щоб у звіті було видно, що саме сталося."""
+    """Short verdict description — so the report shows what exactly happened."""
     parts = [f"перевірок пройдено {result.passed_count} з {len(result.checks)}"]
     if result.timed_out:
         parts.append("код не встиг завершитись")
@@ -143,7 +143,7 @@ def _broken(timeout: float) -> tuple[bool, str]:
     result = run_code(BROKEN, checks(), stdin=INPUT, timeout=timeout)
     ok = (
         not result.all_passed
-        and result.passed_count == 1          # зламався саме підрахунок
+        and result.passed_count == 1          # exactly the counting broke
         and result.first_failed_check == SUM_CHECK
     )
     return ok, _describe(result)
@@ -155,10 +155,10 @@ def _hang(timeout: float) -> tuple[bool, str]:
 
 
 def run_self_check(timeout: float = DEFAULT_TIMEOUT, hang_timeout: float = 1.0) -> SelfCheckReport:
-    """Виконує всі кроки самоперевірки.
+    """Runs all self-test steps.
 
-    `hang_timeout` менший за звичайний таймаут: ми навмисне запускаємо код,
-    який не завершується, і чекати на нього повні 5 секунд немає сенсу.
+    `hang_timeout` is smaller than the plain timeout: we deliberately run
+    never-ending code, and waiting the full 5 seconds on it makes no sense.
     """
     report = SelfCheckReport(frozen=is_frozen())
     probes = (
@@ -170,19 +170,19 @@ def run_self_check(timeout: float = DEFAULT_TIMEOUT, hang_timeout: float = 1.0) 
         try:
             ok, detail = probe()
         except BaseException as error:
-            # Поломка самого тренажера — це теж невдалий крок, а не падіння
-            # самоперевірки: інакше в CI не було б видно, що саме зламалось.
+            # A broken trainer itself is also a failed step, not a self-test
+            # crash: otherwise CI would never show what exactly broke.
             ok, detail = False, f"{type(error).__name__}: {error}"
         report.steps.append(SelfCheckStep(name=name, ok=ok, detail=detail))
     return report
 
 
 def report_path_from(argv: list[str], frozen: bool) -> Path | None:
-    """Куди покласти звіт: явний шлях із команди, інакше — поруч із .exe.
+    """Where to put the report: explicit command path, else — next to the .exe.
 
-    У зібраного `.exe` немає консолі, тож надрукувати звіт йому нікуди.
-    Порожній виклик без шляху кладе його поруч із собою; запуск із коду
-    нічого не створює, бо там є куди друкувати.
+    The built `.exe` has no console, so nowhere to print the report.
+    A bare call with no path puts it next to itself; a run from code creates
+    nothing, since there is somewhere to print.
     """
     if FLAG not in argv:
         return None
@@ -201,14 +201,14 @@ def _write_report(report: SelfCheckReport, target: Path | None) -> None:
 
 
 def _say(text: str) -> None:
-    """Друкує звіт, якщо є куди: у віконного .exe потоків може не бути."""
+    """Prints the report if there is anywhere: a windowed .exe may have no streams."""
     stream = getattr(sys, "stdout", None) or getattr(sys, "stderr", None)
     if stream is not None:
         print(text, file=stream)
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Запускає самоперевірку й повертає 0, лише якщо все справді працює."""
+    """Runs the self-test and returns 0 only if everything really works."""
     argv = list(sys.argv if argv is None else argv)
     ensure_streams()
     report = run_self_check()

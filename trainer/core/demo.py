@@ -1,11 +1,11 @@
-"""Демонстраційний прогрес — щоб подивитись застосунок «живим» і не чіпати свій.
+"""Demo progress — to see the app "alive" without touching your own.
 
-Використовується двома способами:
+Used two ways:
 
-    python main.py --demo         # запуск на тимчасовій базі з цим прогресом
-    python tools/demo_data.py     # створити демо-базу й показати шлях до неї
+    python main.py --demo         # launch on a temp database with this progress
+    python tools/demo_data.py     # create a demo database and show its path
 
-Це також те, з чого зроблені знімки для README.
+This is also what the README screenshots are made from.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from datetime import date, timedelta
 
 from .db import Database
 
-# (id задачі, XP, скільки підказок було відкрито)
+# (task id, XP, how many hints were opened)
 SOLVED = [
     ("w1-hello", 100, 0),
     ("w1-vars", 100, 0),
@@ -27,19 +27,19 @@ SOLVED = [
     ("m2-class-expense", 150, 0),
 ]
 
-# задачі, у яких були провали — вони й творять «слабкі місця»
+# tasks with failures — they are what makes the "weak spots"
 STRUGGLED = ["w2-list", "w2-list", "w2-list", "w3-dict", "w4-errors", "w4-errors"]
 
 REVIEWS = [("w1-input", 1, 0), ("w1-if-marks", 3, 1)]
 IN_PROGRESS = "w2-list"
 
-# (скільки днів тому, скільки спроб) — для календаря активності й серії
+# (how many days ago, how many attempts) — for the activity calendar and streak
 ACTIVITY = [(0, 4), (1, 6), (2, 3), (3, 5), (4, 2), (6, 4), (7, 1), (9, 3),
             (11, 5), (14, 2), (17, 4), (21, 1), (24, 3), (30, 2)]
 
 
 def seed_database(db: Database, *, today: date | None = None) -> None:
-    """Наповнює базу правдоподібним прогрессом за кілька тижнів навчання."""
+    """Fills the database with believable progress over several study weeks."""
     today = today or date.today()
 
     for task_id, xp, hints in SOLVED:
@@ -63,7 +63,7 @@ def seed_database(db: Database, *, today: date | None = None) -> None:
 
 
 def _seed_activity_days(db: Database, today: date) -> None:
-    """Додає спроби в минулі дні — інакше календар і серія були б порожні."""
+    """Adds attempts on past days — otherwise the calendar and streak would be empty."""
     for days_ago, count in ACTIVITY:
         day = today - timedelta(days=days_ago)
         for _ in range(count):

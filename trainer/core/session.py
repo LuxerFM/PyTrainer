@@ -1,11 +1,12 @@
-"""Правила навчання в одному місці — без єдиного рядка Qt.
+"""Learning rules in one place — without a single line of Qt.
 
-Тут вирішується все, що стосується прогресу: здано чи ні, скільки XP,
-чи йти задачі в чергу повторень, чи задача «утримана» і що саме показати
-людині. Інтерфейс лише викликає ці методи й малює результат.
+Everything about progress is decided here: passed or not, how much XP,
+whether the task joins the review queue, whether it is "retained" and what
+exactly to show the human. The UI only calls these methods and draws the
+result.
 
-Завдяки цьому правила можна перевіряти тестами без вікна, а той самий код
-можна використати в командному рядку або в майбутній вебверсії.
+So the rules are testable without a window, and the same code can drive a
+command line or a future web version.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from .runner import RunResult
 
 @dataclass
 class StudyUpdate:
-    """Що змінилося після спроби — усе, що потрібно інтерфейсу, щоб оновити екран."""
+    """What changed after the attempt — everything the UI needs to redraw."""
 
     task_id: str
     passed: bool = False
@@ -41,21 +42,21 @@ class StudyUpdate:
 
 
 class StudySession:
-    """Одна навчальна сесія: читання плану + запис результатів у базу."""
+    """One study session: reading the plan + writing results to the database."""
 
     def __init__(self, db: Database, lookup=find_task) -> None:
         self.db = db
         self._lookup = lookup
 
     # ------------------------------------------------------------------
-    # запитання до стану
+    # state questions
     # ------------------------------------------------------------------
 
     def task(self, task_id: str) -> Task | None:
         return self._lookup(task_id)
 
     def preview_xp(self, task: Task) -> int:
-        """Скільки XP дасть задача зараз, з урахуванням підказок і спроб."""
+        """How much XP the task grants now, given hints and attempts."""
         return scoring.xp_for(
             task,
             hints_used=self.db.hints_used(task.id),
@@ -64,13 +65,13 @@ class StudySession:
         )
 
     def is_mastered(self, task_id: str) -> bool:
-        """Утримано: задача здана й більше не потребує повторень."""
+        """Retained: the task is passed and needs no more reviews."""
         return (
             self.db.status(task_id) == "done" and self.db.review(task_id) is None
         )
 
     def summary(self) -> dict:
-        """Цифри для екрана прогресу."""
+        """Numbers for the progress screen."""
         ready = study_tasks()
         rows = self.db.task_results()
         done_rows = [row for row in rows if row["status"] == "done"]
@@ -87,33 +88,33 @@ class StudySession:
         }
 
     # ------------------------------------------------------------------
-    # підказки й ручні пункти
+    # hints and manual items
     # ------------------------------------------------------------------
 
     def record_hint(self, task: Task, level: int, is_solution: bool) -> int:
-        """Фіксує відкриту підказку. Повертає новий прогноз XP."""
+        """Records an opened hint. Returns the new XP forecast."""
         self.db.reveal_hint(task.id, level, is_solution)
         return self.preview_xp(task)
 
     def use_solution(self, task: Task) -> int:
-        """Людина вставила розв'язок у редактор — це найдорожча підказка."""
+        """The human pasted the solution into the editor — the priciest hint."""
         self.db.mark_solution_used(task.id)
         return self.preview_xp(task)
 
     def mark_manual_done(self, task: Task, xp: int = 0) -> None:
-        """Пункт, зроблений поза тренажером (venv, Git, pytest): ставимо галочку."""
+        """Item done outside the trainer (venv, Git, pytest): tick it."""
         self.db.mark_solved(task.id, xp)
 
     # ------------------------------------------------------------------
-    # головне: запис результату спроби
+    # the main thing: recording an attempt's result
     # ------------------------------------------------------------------
 
     def record_result(
         self, task: Task, result: RunResult, *, review_mode: bool = False
     ) -> StudyUpdate | None:
-        """Записує результат перевірки й повертає все, що змінилось.
+        """Records the check result and returns everything that changed.
 
-        None означає, що це був звичайний запуск без перевірок — прогрес не чіпаємо.
+        None means a plain run with no checks — progress untouched.
         """
         if not result.ran_checks:
             self.db.record_attempt(task.id, ok=False, with_checks=False)
@@ -124,16 +125,16 @@ class StudySession:
         update.first_try = not solved_before
         xp = self.preview_xp(task)
 
-        # «Чисто» — здано без підказок і без вставленого розв'язку. За цією
-        # ознакою журнал помилок вирішує, що закрито по-справжньому.
+        # "Clean" — passed with no hints and no pasted solution. The mistake
+        # journal uses this flag to decide what is truly closed.
         clean = (
             result.all_passed
             and self.db.hints_used(task.id) == 0
             and not self.db.solution_used(task.id)
         )
 
-        # Пишемо в журнал не лише «не здав», а й на чому саме спіткнувся —
-        # з цього потім складається список «твої помилки».
+        # The journal records not just "failed" but what exactly tripped —
+        # that later becomes the "your mistakes" list.
         self.db.record_attempt(
             task.id,
             ok=result.all_passed,
@@ -164,14 +165,15 @@ class StudySession:
     def _handle_success(
         self, task: Task, update: StudyUpdate, solved_before: bool, review_mode: bool
     ) -> None:
-        """Оновлює чергу повторень і нараховує XP за повторення."""
+        """Updates the review queue and grants review XP."""
         if review_mode:
             previous = self.db.review(task.id)
             if previous is None:
-                # Задача вже поза чергою (утримана). Успішне холодне згадування
-                # не повертає її в розклад — інакше «утримано» ламалося б від
-                # кожного тренування — лише дає найщедріший бонус, як за
-                # найдовший витриманий інтервал.
+                # Task already out of the queue (retained). A successful cold
+                # recall does not put it back on schedule — otherwise
+                # "retained" would break on every training — it only grants
+                # the most generous bonus, as for the longest survived
+                # interval.
                 depth = len(scoring.INTERVALS) - 1
                 days = None
                 update.review_index = 0

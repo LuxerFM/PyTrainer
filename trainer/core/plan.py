@@ -1,15 +1,15 @@
-"""План на сьогодні: що конкретно робити за ці 1,5–2 години.
+"""Today's plan: exactly what to do in these 1.5–2 hours.
 
-Найбільше рішення, яке щодня вбиває навчання, — «з чого почати?». Тому замість
-списку з 47 задач тренажер складає короткий порядок дій:
+The biggest decision killing learning every day is "where to start?". So
+instead of a 47-task list the trainer composes a short order of actions:
 
-1. **Повторення** — те, що ось-ось забудеться. Це завжди перше, бо інакше
-   черга росте, а знання вивітрюються.
-2. **Слабка тема** — якщо статистика вже бачить провали, добиваємо їх.
-3. **Нова задача** — далі за планом, поки не вичерпано час.
+1. **Reviews** — what is about to be forgotten. Always first, otherwise the
+   queue grows and knowledge evaporates.
+2. **Weak topic** — if stats already see failures, finish them off.
+3. **New task** — further down the plan while time remains.
 
-Модуль не знає ні про Qt, ні про планування в календарі: це чиста функція від
-бази до списку кроків, тому її легко перевіряти тестами.
+The module knows neither Qt nor calendar scheduling: a pure function from the
+database to a step list, so tests cover it easily.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from curriculum import find_task, study_tasks, topic_of
 
 from .stats import weak_topics
 
-# Скільки хвилин у типовому дні за планом роадмапу (1,5–2 години)
+# Minutes in a typical roadmap-plan day (1.5–2 hours)
 DEFAULT_BUDGET = 100
 REVIEW_MINUTES = 8
 MAX_REVIEWS = 4
@@ -29,7 +29,7 @@ MAX_REVIEWS = 4
 
 @dataclass
 class PlanStep:
-    """Один крок плану: що робити і чому саме це."""
+    """One plan step: what to do and why exactly this."""
 
     kind: str                  # review | weak | new
     title: str
@@ -42,7 +42,7 @@ class PlanStep:
 
 @dataclass
 class DailyPlan:
-    """План на один день + підсумок."""
+    """One day's plan + summary."""
 
     steps: list[PlanStep] = field(default_factory=list)
     budget: int = DEFAULT_BUDGET
@@ -56,7 +56,7 @@ class DailyPlan:
         return not self.steps
 
     def as_lines(self) -> list[str]:
-        """Короткий текстовий вигляд — для консолі й тестів."""
+        """Short text view — for the console and tests."""
         return [
             f"{index}. [{step.kind}] {step.title} · ~{step.minutes} хв — {step.reason}"
             for index, step in enumerate(self.steps, start=1)
@@ -64,16 +64,16 @@ class DailyPlan:
 
 
 def daily_plan(db, *, budget: int = DEFAULT_BUDGET) -> DailyPlan:
-    """Складає план на день із того, що вже є в базі.
+    """Composes the day's plan from what is already in the database.
 
-    Порядок кроків: повторення → слабка тема → нові задачі. Час обмежений
-    бюджетом, тому план завжди реально виконати за один вечір.
+    Step order: reviews → weak topic → new tasks. Time is budget-capped, so
+    the plan is always doable in one evening.
     """
     plan = DailyPlan(budget=budget)
     statuses = db.statuses()
     left = budget
 
-    # 1. Повторення, які вже час зробити
+    # 1. Reviews already due
     for row in db.due_reviews()[:MAX_REVIEWS]:
         task = find_task(row["task_id"])
         if task is None or task.stub:
@@ -90,7 +90,7 @@ def daily_plan(db, *, budget: int = DEFAULT_BUDGET) -> DailyPlan:
         ))
         left -= REVIEW_MINUTES
 
-    # 2. Слабка тема, у якій є незадана задача
+    # 2. Weak topic with an unpassed task
     weak = pick_weak_task(db, statuses)
     if weak is not None and left > 10:
         task, topic_name, rate = weak
@@ -105,7 +105,7 @@ def daily_plan(db, *, budget: int = DEFAULT_BUDGET) -> DailyPlan:
         ))
         left -= max(10, task.minutes)
 
-    # 3. Нові задачі за планом, поки є час
+    # 3. New tasks down the plan, while time remains
     for task in study_tasks():
         if left <= 8:
             break
@@ -127,7 +127,7 @@ def daily_plan(db, *, budget: int = DEFAULT_BUDGET) -> DailyPlan:
 
 
 def pick_weak_task(db, statuses):
-    """Перша незадана задача з найслабшої теми (None, якщо таких немає)."""
+    """First unpassed task of the weakest topic (None if there is none)."""
     weak = weak_topics(db.task_results())
     by_topic: dict[str, list] = {}
     for task in study_tasks():

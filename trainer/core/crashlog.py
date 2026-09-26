@@ -1,15 +1,15 @@
-"""Креш-лог і версія — щоб «закрилось і мовчить» стало «закрилось і видно чому».
+"""Crash log and version — turning "closed silently" into "closed, and here is why".
 
-Що робить модуль (усе — стандартна бібліотека):
+What the module does (all stdlib):
 
-* `version()` — єдина версія з `trainer/__init__.py`, плюс дата збірки,
-  якщо її записав `tools/build_exe.py` (файл `trainer/_build.py`);
-* `setup_crashlog()` — включає `logging` у файл `logs/pytrainer.log`
-  у теці даних і ставить `sys.excepthook`, який кожен неперехоплений виняток
-  пише ще й в окремий `logs/crash-<дата>.log` з версією, платформою й argv.
+* `version()` — the single version from `trainer/__init__.py`, plus the build
+  date if `tools/build_exe.py` wrote it (file `trainer/_build.py`);
+* `setup_crashlog()` — enables `logging` to `logs/pytrainer.log` in the data
+  folder and installs a `sys.excepthook` that also writes every uncaught
+  exception to a separate `logs/crash-<date>.log` with version, platform, argv.
 
-Викликається один раз на старті (`trainer/app.py` і `trainer/cli.py`
-для `--self-test`). Ідемпотентно: повторний виклик нічого не міняє.
+Called once at startup (`trainer/app.py`, and `trainer/cli.py` for
+`--self-test`). Idempotent: a repeat call changes nothing.
 """
 
 from __future__ import annotations
@@ -24,14 +24,14 @@ LOG_FOLDER = "logs"
 
 
 def version() -> str:
-    """Версія застосунку, напр. «0.2.0»."""
+    """App version, e.g. "0.2.0"."""
     from trainer import __version__
 
     return __version__
 
 
 def build_info() -> str:
-    """Дата збірки .exe або «з коду» для звичайного запуску."""
+    """Build date of the .exe, or «з коду» ("from code") for a plain run."""
     try:
         from trainer import _build as build  # type: ignore
 
@@ -44,12 +44,12 @@ def build_info() -> str:
 
 
 def version_line() -> str:
-    """Один рядок для --version, заголовка вікна й шапки креш-логу."""
+    """One line for --version, the window title and the crash-log header."""
     return f"PyTrainer {version()} ({build_info()})"
 
 
 def log_folder(folder: str | Path | None = None) -> Path:
-    """Тека журналів усередині теки даних."""
+    """Log folder inside the data folder."""
     from ..paths import data_folder
 
     target = Path(folder) if folder else data_folder() / LOG_FOLDER
@@ -77,9 +77,9 @@ _folder: str | None = None
 
 
 def setup_crashlog(folder: str | Path | None = None) -> Path:
-    """Вмикає файл-журнал і перехоплення неперехоплених винятків.
+    """Enables the file log and uncaught-exception interception.
 
-    Повертає шлях до основного журналу (`pytrainer.log`).
+    Returns the path of the main log (`pytrainer.log`).
     """
     global _configured_for, _hook_installed, _previous_hook, _handler, _folder
 
@@ -123,7 +123,7 @@ def _excepthook(kind, value, tb) -> None:
             encoding="utf-8",
         )
         logging.getLogger("pytrainer.crash").critical(
-            "Неперехоплений виняток, подробиці в %s", crash.name,
+            "Uncaught exception, details in %s", crash.name,
         )
     except OSError:
         pass
@@ -135,7 +135,7 @@ def _excepthook(kind, value, tb) -> None:
 
 
 def reset_for_tests() -> None:
-    """Скидає стан модуля — лише для тестів."""
+    """Resets module state — for tests only."""
     global _configured_for, _hook_installed, _previous_hook, _handler, _folder
     if _handler is not None:
         logging.getLogger().removeHandler(_handler)
