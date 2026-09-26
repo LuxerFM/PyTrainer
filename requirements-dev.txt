@@ -6,4 +6,4 @@
 pyinstaller>=6.10
 
 # Покриття тестами: показується в CI
-coverage[toml]>=7.6
+coverage[toml]>=7.16.1
