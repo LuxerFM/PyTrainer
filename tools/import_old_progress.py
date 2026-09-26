@@ -1,15 +1,15 @@
-"""Переносить уже виконане зі старого текстового роадмапу в базу тренажера.
+"""Carries already-done items from the old text roadmap into the trainer database.
 
-У файлі Python-Roadmap.md (до появи тренажера) були відмічені пункти, які ти
-вже пройшов: встановлення Python, print() і змінні, умови, цикли, калькулятор,
-гра «Вгадай число». Цей скрипт переносить їх у базу, щоб тренажер не змушував
-починати з нуля.
+The Python-Roadmap.md file (from before the trainer) had ticked items you had
+already covered: installing Python, print() and variables, conditions, loops,
+the calculator, the "Guess the number" game. This script moves them into the
+database so the trainer does not force you to start from zero.
 
-XP за ці задачі не нараховується — вони лише позначаються як пройдені.
+No XP is granted for these tasks — they are only marked as passed.
 
-Запуск:
-    .venv\\Scripts\\python.exe tools/import_old_progress.py            (перенести)
-    .venv\\Scripts\\python.exe tools/import_old_progress.py --dry-run  (тільки показати)
+Run:
+    .venv\\Scripts\\python.exe tools/import_old_progress.py            (move)
+    .venv\\Scripts\\python.exe tools/import_old_progress.py --dry-run  (show only)
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT))
 from curriculum import find_task  # noqa: E402
 from trainer.core.db import Database  # noqa: E402
 
-# Що було відмічено [x] у старому роадмапі → задачі тренажера
+# What was ticked [x] in the old roadmap → trainer tasks
 ALREADY_DONE = {
     "w1-hello": "встановлення Python і перші print()",
     "w1-vars": "змінні та типи даних",

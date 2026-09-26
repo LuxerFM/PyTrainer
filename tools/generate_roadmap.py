@@ -1,7 +1,7 @@
-"""Перегенеровує Python-Roadmap.md із навчального плану та бази прогресу.
+"""Regenerates Python-Roadmap.md from the curriculum and the progress database.
 
-Застосунок робить це сам після кожної здачі задачі, але інколи треба
-оновити файл вручну:
+The app does this itself after every passed task, but sometimes the file
+needs a manual refresh:
 
     .venv\\Scripts\\python.exe tools/generate_roadmap.py
 """
@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))  # щоб запускати скрипт із будь-якої папки
+sys.path.insert(0, str(ROOT))  # so the script runs from any folder
 
 from curriculum.roadmap_md import write  # noqa: E402
 from trainer.core.db import Database  # noqa: E402

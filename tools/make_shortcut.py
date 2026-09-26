@@ -1,19 +1,19 @@
-"""Створює ярлик PyTrainer на робочому столі (Windows).
+"""Creates a PyTrainer shortcut on the desktop (Windows).
 
     .venv\\Scripts\\python.exe tools/make_shortcut.py
 
-Навіщо окремий скрипт: ярлик — це файл із зашитим шляхом. Якщо перенести теку
-з застосунком, ярлик «зламається», і відновити його треба однією командою, а
-не згадуванням, як це робилось.
+Why a separate script: a shortcut is a file with a baked-in path. If the app
+folder moves, the shortcut "breaks", and restoring it must take one command,
+not recalling how it was made.
 
-Що робить скрипт:
-1. знаходить зібраний `.exe` (спершу поруч із проєктом, потім у `dist/`);
-2. створює `PyTrainer.lnk` на робочому столі з тією ж іконкою, що в застосунку;
-3. друкує шлях до ярлика — щоб було видно, де він лежить.
+What the script does:
+1. finds the built `.exe` (first next to the project, then in `dist/`);
+2. creates `PyTrainer.lnk` on the desktop with the app's icon;
+3. prints the shortcut path — so you see where it lies.
 
-Важлива дрібниця: тека запуску ярлика — це тека `.exe`, тому прогрес
-(`pytrainer.db`, `progress.json`, `Python-Roadmap.md`) лежить саме там і
-подорожує разом із нею.
+One important detail: the shortcut's working folder is the `.exe` folder, so
+progress (`pytrainer.db`, `progress.json`, `Python-Roadmap.md`) lies exactly
+there and travels with it.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ DEFAULT_NAME = "PyTrainer"
 
 
 def find_exe(explicit: str | None = None) -> Path:
-    """Знаходить зібраний .exe: явний шлях → корінь проєкту → dist/."""
+    """Finds the built .exe: explicit path → project root → dist/."""
     if explicit:
         path = Path(explicit)
         if not path.exists():
@@ -52,10 +52,10 @@ def find_exe(explicit: str | None = None) -> Path:
 
 
 def make_shortcut(exe: Path, name: str = DEFAULT_NAME) -> Path:
-    """Створює ярлик на робочому столі й повертає його шлях.
+    """Creates the desktop shortcut and returns its path.
 
-    Через PowerShell, а не через pywin32: це не додає ще одну залежність до
-    проєкту, а WScript.Shell є в будь-якій Windows.
+    Via PowerShell, not pywin32: it adds no new project dependency, and
+    WScript.Shell exists on any Windows.
     """
     icon = ROOT / "assets" / "icon.ico"
     script = f"""
@@ -73,8 +73,8 @@ $shortcut.Description = 'PyTrainer — тренажер Python'
         script += f"$shortcut.IconLocation = '{icon}'\n"
     script += "$shortcut.Save()\nWrite-Output $link\n"
 
-    # -EncodedCommand тримає українські літери живими незалежно від кодової
-    # сторінки консолі Windows.
+    # -EncodedCommand keeps non-ASCII letters alive regardless of the
+    # Windows console code page.
     encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
     result = subprocess.run(
         ["powershell", "-NoProfile", "-NonInteractive",

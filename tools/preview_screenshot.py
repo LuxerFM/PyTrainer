@@ -1,7 +1,7 @@
-"""Службовий скрипт для розробки.
+"""A dev service script.
 
-Складає один HTML з одного або кількох PNG-знімків (вбудованих у base64),
-щоб показати їх у панелі Preview без окремого веб-сервера.
+Builds one HTML from one or more PNG screenshots (embedded as base64) to show
+them in the Preview panel with no separate web server.
 
     .venv\\Scripts\\python.exe tools/preview_screenshot.py screenshots/main.png screenshots/progress.png
 """

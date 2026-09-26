@@ -1,9 +1,9 @@
-"""Створює окрему демонстраційну базу (не чіпаючи твою).
+"""Creates a separate demo database (without touching yours).
 
     .venv\\Scripts\\python.exe tools/demo_data.py
 
-Далі цю базу можна подивитись, підмінивши файл, або просто запустити
-застосунок у демо-режимі: python main.py --demo
+Then this database can be inspected by swapping the file, or simply launch
+the app in demo mode: python main.py --demo
 """
 
 from __future__ import annotations
