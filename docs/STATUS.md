@@ -1,225 +1,231 @@
-# PyTrainer: що це зараз, чого бракує і що робити далі
+# PyTrainer: what it is now, what is missing, what to do next
 
-Оновлено 26.09.2026 (коміт `b420f0f`). Живе в репозиторії, щоб опис не розходився
-з кодом; цифри нижче можна перевірити командами з README.
+Updated 26.09.2026 (commit `c465c03`). Lives in the repository so the
+description does not drift from the code; the numbers below are verifiable with
+the commands from README.
 
-## Що це зараз
+## What it is now
 
-PyTrainer — настільний тренажер Python українською (PySide6/Qt 6, SQLite, усе
-інше — стандартна бібліотека; єдина зовнішня залежність — PySide6==6.11.2). Мета
-задана в самому продукті: за 9 місяців від нуля до перших грошей на фрілансі.
+PyTrainer is a desktop Python trainer in Ukrainian (PySide6/Qt 6, SQLite,
+everything else is the standard library; the only external dependency is
+PySide6==6.11.2). The goal is set inside the product itself: in 9 months from
+zero to first freelance money.
 
-Сьогодні це вже не прототип: 464 тести, покриття ~95 %, зібраний `.exe` на
-40.6 МБ, який не потребує ні Python, ні інтернету, ні прав адміністратора, а
-прогрес лежить у службовій теці системи, а не поруч із `.exe` (чому саме так —
-див. «Інтерфейс і дані»).
+Today it is no longer a prototype: 464 tests, ~95% coverage, a 40.6 MB built
+`.exe` needing no Python, no internet and no admin rights, with progress kept
+in the system service folder rather than next to the `.exe` (why exactly —
+see "UI and data").
 
-## Контент: 108 задач, з них 80 готові
+## Content: 108 tasks, 80 ready
 
-| Блок | Готові / всього | Що це |
+| Block | Ready / total | What it is |
 |---|---|---|
-| Місяці 1–2 | 31 із 35 | база: змінні, умови, цикли, рядки, списки, словники, функції, файли, помилки, ООП, Git, venv |
-| Дрили тижнів 1–4 | 20 із 20 | 5–12 хвилин на одну навичку, перевірка на кількох входах — «вписати відповідь» не працює |
-| Місяці 3–4 | 24 із 29 | LeetCode/Codewars 7 kyu – medium, мережа з фікстурою fake_api, пошук багів |
-| Місяці 5–6 | 5 із 14 | робота з даними, тести, перші проєктні задачі (кілька файлів, справжній `import`) |
-| Місяці 7–9 | 0 із 10 | позначки майбутніх блоків (stub): їх можна тільки позначити галочкою |
-| **Разом** | **80 із 108** | 28 позначок (stub) розкидані по місяцях 2–9 |
+| Months 1–2 | 31 of 35 | basics: variables, conditions, loops, strings, lists, dicts, functions, files, errors, OOP, Git, venv |
+| Drills of weeks 1–4 | 20 of 20 | 5–12 minutes per single skill, checks on several inputs — "typing the answer in" does not work |
+| Months 3–4 | 24 of 29 | LeetCode/Codewars 7 kyu – medium, network with a fake_api fixture, bug hunts |
+| Months 5–6 | 5 of 14 | data work, tests, first project tasks (several files, real `import`) |
+| Months 7–9 | 0 of 10 | future-block markers (stub): tickable only |
+| **Total** | **80 of 108** | 28 stubs (stub) spread over months 2–9 |
 
-Готового матеріалу — 1063 хвилини (~18 годин) за оцінками задач. Усього 347
-перевірок: 282 — код, решта 65 — вивід (`contains`, `not_contains`, `equals`,
-`lines`). 35 задач мають вказане джерело, 10 — додаткові файли проєкту. За
-складністю: 18 легких, 45 середніх, 11 складних, 6 проєктних. Матеріал
-дописується на 2–3 тижні вперед — свідомо, а не вигадується наперед.
+Ready material is 1063 minutes (~18 hours) by task estimates. 347 checks in
+total: 282 code, the other 65 output (`contains`, `not_contains`, `equals`,
+`lines`). 35 tasks name a source, 10 bring extra project files. By difficulty:
+18 easy, 45 medium, 11 hard, 6 project. Material is written 2–3 weeks ahead —
+deliberately, never invented upfront.
 
-## Двигун перевірки
+## Check engine
 
-Код виконується в окремому процесі в тимчасовій теці: таймаут 5 с із убивством
-усього дерева процесів, ліміт виводу 64 КБ, stdin як фікстура, задачі з кількох
-файлів зі справжнім `import`. У `.exe` тренажер запускає сам себе з
-`--exec-runner` (бо `sys.executable` там — це сам тренажер).
+Code runs in a separate process in a temp folder: 5 s timeout killing the whole
+process tree, 64 KB output cap, stdin as fixture, multi-file tasks with a real
+`import`. In the `.exe` the trainer launches itself with `--exec-runner`
+(because `sys.executable` there is the trainer itself).
 
-Перевірки stdout тепер ідуть **паралельно** (до 3 потоків, порядок відповідей
-збережено), а дочірній інтерпретатор **прогрівається** заздалегідь у фоновому
-потоці: на трьох перевірках 3361 мс → 1419 мс у зібраному `.exe`, перший запуск
-дитини 1228 мс, прогрітий — 1063–1118 мс.
+Stdout checks now run **in parallel** (up to 3 threads, answer order
+preserved), and the child interpreter **warms up** ahead in a background
+thread: on three checks 3361 ms → 1419 ms in the built `.exe`, first child
+launch 1228 ms, warmed-up 1063–1118 ms.
 
-22 типи помилок пояснюються українською: що це означає, у якому рядку, що робити,
-з кнопкою «Перейти до рядка».
+22 error types explained in Ukrainian: what it means, which line, what to do,
+with a "go to line" button.
 
-Розбір коду — 11 правил над `ast`, які читають не «чи працює», а «чи зрозуміє
-людина»; розбір не блокує, не зменшує XP і знає про приховані перевірки.
+Code review is 11 rules over `ast` that read not "does it work" but "will a
+human understand"; review never blocks, never lowers XP, and knows about hidden
+checks.
 
-## Навчальні правила (усе в ядрі, не в інтерфейсі)
+## Learning rules (all in the core, not in the UI)
 
-XP за рівнем задачі, мінус 15 % за кожну підказку (не нижче 40 %); вставлений
-розв'язок = 3 підказки + обов'язкове повторення.
-Третій рівень підказки — за 10 хвилин активної роботи (20–25 для проєктів);
-рахується лише час у фокусі.
-Повторення 1 / 3 / 7 / 30 з окремим XP за глибину інтервалу; п'яте успішне
-повторення знімає задачу з черги («утримано» — головна цифра прогресу).
-Холодне повторення: випадкова здана задача із заготовки, без підказок, із
-таймером 3–10 хв.
-Тижневий огляд: підсумок семи днів, слабкі теми, три наступні кроки,
-markdown-звіт; журнал помилок закривається лише чистим проходом.
-План на день (повторення → слабка тема → нова задача) із бюджетом 100 хвилин;
-серія днів; активний час; XP-графік за 4 тижні й календар за 8 тижнів.
+XP by task level, minus 15% per hint (floored at 40%); a pasted solution = 3
+hints + mandatory review.
+Third hint level after 10 minutes of active work (20–25 for projects); only
+in-focus time counts.
+Reviews at 1 / 3 / 7 / 30 with separate XP per interval depth; the fifth
+successful review drops the task from the queue ("retained" is the headline
+progress number).
+Cold review: a random passed task from its stub, no hints, 3–10 min timer.
+Weekly digest: a seven-day summary, weak topics, three next steps, a markdown
+report; the mistake journal closes only on a clean pass.
+Day plan (reviews → weak topic → new task) with a 100-minute budget; day
+streak; active time; a 4-week XP chart and an 8-week calendar.
 
-## Інтерфейс і дані
+## UI and data
 
-Шість вкладок панелі задачі (задача, тести, рев'ю, довідка, підказки, історія),
-чотири режими сайдбара (Шлях / Повторення / Прогрес / План), 18 шпаргалок, що
-підбираються під задачу, темна й світла тема, масштаб тексту, понад 15 гарячих
-клавіш.
+Six task-panel tabs (task, tests, review, reference, hints, history), four
+sidebar modes (Path / Reviews / Progress / Plan), 18 cheatsheets matched to
+the task, dark and light themes, text scaling, 15+ hotkeys.
 
-Дані розділені за призначенням, і це не косметика:
+Data is split by purpose, and that is not cosmetic:
 
-| Де | Що там | Чому саме там |
+| Where | What is there | Why exactly there |
 |---|---|---|
-| `%LOCALAPPDATA%\PyTrainer` (або тека з `--data-dir`) | `pytrainer.db`, `backups/` (7 останніх), `pytrainer.lock` | робочий стіл на цій машині синхронізується з OneDrive, а SQLite у синхронізованій теці псується рано чи пізно |
-| поруч із `.exe` | `progress.json`, `Python-Roadmap.md`, `pytrainer.ini` | читабельна історія прогресу, генерований план і стан вікна |
+| `%LOCALAPPDATA%\PyTrainer` (or the `--data-dir` folder) | `pytrainer.db`, `backups/` (last 7), `pytrainer.lock` | the desktop on this machine syncs to OneDrive, and SQLite in a synced folder rots sooner or later |
+| next to the `.exe` | `progress.json`, `Python-Roadmap.md`, `pytrainer.ini` | readable progress history, generated plan, window state |
 
-Переїзд зі старої теки робить `paths.migrate_data()`: спершу копіює, потім
-перейменовує старий файл у `*.moved` — обрив посеред переїзду коштує двох копій,
-а не прогресу. База відкривається з `journal_mode=WAL`, `busy_timeout=5000` і
-`PRAGMA quick_check()`; побитий файл не стирається, а відсувається в
-`pytrainer.db.broken-<дата>`. Друге вікно на тій самій базі не відкривається —
-`QLockFile` із PID, причому пошкоджений замок більше не блокує запуск назавжди.
-Демо-режим на тимчасовій базі не чіпає твій прогрес.
+Moving from the old folder is done by `paths.migrate_data()`: first copy, then
+rename the old file to `*.moved` — an interrupted move costs two copies, not
+progress. The database opens with `journal_mode=WAL`, `busy_timeout=5000` and
+`PRAGMA quick_check()`; a broken file is not erased but slid aside to
+`pytrainer.db.broken-<date>`. No second window opens on the same database —
+`QLockFile` with a PID, and a corrupted lock no longer blocks launch forever.
+Demo mode on a temp database never touches your progress.
 
-## Інфраструктура
+## Infrastructure
 
-464 тести, покриття 95 % (порог у CI — 90 %), з них найцінніший прогоняє кожен
-розв'язок курсу проти його ж перевірок і окремо перевіряє, що заготовка не
-проходить. Окремі тести-охоронці стежать, щоб цифри в README (тести, задачі,
-знімки) не розходилися з правдою.
+464 tests, 95% coverage (CI gate at 90%), of which the most valuable runs every
+course solution against its own checks and separately verifies the starter
+does not pass. Separate guard tests watch the README numbers (tests, tasks,
+screenshots) so they never drift from the truth.
 
-CI-воркфлоу написано: unit-тести на Python 3.11 і 3.13, coverage, збірка `.exe`
-із самоперевіркою (код справді виконується — 3/3 кроки), реліз за тегом.
-**26.09.2026 CI вперше зелений** (юніти 3.11/3.13, coverage, збірка + self-test
-.exe, реліз v0.2.1). Дорогою вилікували 3 баги, які видно тільки в живому
-CI: тротл пропускав перший запис (`monotonic` у свіжому контейнері < 180с),
-cp1252 консоль Windows-ранера (`PYTHONUTF8: 1`), віконний `.exe` не блокує
-shell (`Start-Process -Wait`). Репо: `LuxerFM/PyTrainer`, гілка master.
+The CI workflow is written: unit tests on Python 3.11 and 3.13, coverage, a
+`.exe` build with a self-check (code really runs — 3/3 steps), release on tag.
+**26.09.2026 CI green for the first time** (units 3.11/3.13, coverage, build +
+self-test of the .exe, release v0.2.1). On the way we cured 3 bugs visible
+only in live CI: the throttle skipped the first write (`monotonic` in a fresh
+container < 180 s), the Windows runner's cp1252 console (`PYTHONUTF8: 1`), the
+windowed `.exe` not blocking the shell (`Start-Process -Wait`). Repo:
+`LuxerFM/PyTrainer`, branch master.
 
-10 знімків у README генеруються скриптом і перевіряються тестом; знімок запуску
-з коду й з `.exe` звірено піксельно — 0 розбіжних пікселів із 1 361 600.
+10 README screenshots are generated by a script and verified by a test; the
+code-run vs `.exe`-run screenshots are pixel-compared — 0 differing pixels out
+of 1,361,600.
 
-## Що вже тягне на production
+## What already holds up as production
 
-Безпека виконання чужого коду (процес, таймаут, ліміт, дерево процесів),
-збереження прогресу (тека поза хмарою, WAL, `busy_timeout`, `quick_check`,
-відступ побитого файлу, 7 копій через `Connection.backup`), перенос даних без
-втрат, один процес на базу, міграції бази, self-test, детерміновані знімки,
-документація архітектури, повна офлайн-робота, нуль мережевих запитів,
-відсутність збору даних.
+Third-party code execution safety (process, timeout, cap, process tree),
+progress persistence (folder outside the cloud, WAL, `busy_timeout`,
+`quick_check`, broken-file retreat, 7 copies via `Connection.backup`),
+lossless data moves, one process per database, database migrations, self-test,
+deterministic screenshots, architecture docs, full offline work, zero network
+requests, no data collection.
 
-Закрито 26.09.2026 (коміт `b420f0f`): перенесення даних із OneDrive, `WAL` +
-`busy_timeout` + `quick_check`, один процес на базу (з лікуванням пошкодженого
-замка), паралельні перевірки й прогрів інтерпретатора.
-Закрито 26.09.2026: креш-лог і версія — `--version`, версія в заголовку вікна,
-`logs/pytrainer.log` + `logs/crash-*.log` з версією й argv, дата збірки.
-Закрито 26.09.2026: переносимість `progress.json` — snapshot/restore версії 2
-включає `attempts` (журнал помилок, огляд, streak і XP-статистика їдуть разом
-з прогресом; повторний імпорт дублів не створює, файли v1 читаються).
-Закрито 26.09.2026: відновлення з копії через UI — «Файл → Відновити з копії…»
-зі списком `backups/`, підтвердженням і страховою копією `*-pre-restore-*.db`;
-бита копія живу базу не чіпає.
+Closed 26.09.2026 (commit `b420f0f`): data move out of OneDrive, `WAL` +
+`busy_timeout` + `quick_check`, one process per database (with corrupted-lock
+healing), parallel checks and interpreter warm-up.
+Closed 26.09.2026: crash log and version — `--version`, version in the window
+title, `logs/pytrainer.log` + `logs/crash-*.log` with version and argv, build
+date.
+Closed 26.09.2026: `progress.json` portability — version-2 snapshot/restore
+carries `attempts` (mistake journal, digest, streak and XP stats travel with
+the progress; re-import creates no duplicates, v1 files still read).
+Closed 26.09.2026: restore from backup via UI — "Файл → Відновити з копії…"
+("File → Restore from backup…") with a `backups/` list, confirmation and a
+`*-pre-restore-*.db` safety copy; a broken backup never touches the live base.
 
-## Чого бракує (за пріоритетом)
+## What is missing (by priority)
 
-### P0 — перш ніж давати комусь іншому
+### P0 — before giving it to anyone else
 
-| Прогалина | Чому це боляче | Зусилля |
+| Gap | Why it hurts | Effort |
 |---|---|---|
-| Переносимість `progress.json` | ✅ Закрито 26.09.2026: snapshot v2 везе `attempts`, restore зливає без дублів | — |
-| Креш-лог і версія | ✅ Закрито 26.09.2026: `--version`, версія в заголовку вікна й «Про тренажер», `logs/pytrainer.log` + `logs/crash-*.log`, дата збірки з `tools/build_exe.py` | — |
-| Відновлення з копії через UI | ✅ Закрито 26.09.2026: «Файл → Відновити з копії…», страхова копія `*-pre-restore-*.db`, бита копія базу не чіпає | — |
-| Перший запуск CI | ✅ Закрито 26.09.2026: remote є, CI зелений, реліз v0.2.1 з `.exe` | — |
-| Репутація `.exe` | SmartScreen попереджає про невідомого видавця; немає ні підпису, ні інсталятора, ні оновлення | 1 день+ (сертифікат, Inno Setup) |
+| `progress.json` portability | ✅ Closed 26.09.2026: snapshot v2 carries `attempts`, restore merges without duplicates | — |
+| Crash log and version | ✅ Closed 26.09.2026: `--version`, version in the window title and "About", `logs/pytrainer.log` + `logs/crash-*.log`, build date from `tools/build_exe.py` | — |
+| Restore from backup via UI | ✅ Closed 26.09.2026: "Файл → Відновити з копії…" ("File → Restore from backup…"), `*-pre-restore-*.db` safety copy, broken backup leaves the base alone | — |
+| First CI run | ✅ Closed 26.09.2026: remote exists, CI green, release v0.2.1 with `.exe` | — |
+| `.exe` reputation | SmartScreen warns about an unknown publisher; no signature, no installer, no update | 1 day+ (certificate, Inno Setup) |
 
-### P1 — якість і життя
+### P1 — quality and life
 
-- ✅ Закрито 26.09.2026: розпил завершено — `main_window.py` ~1500→891
+- ✅ Closed 26.09.2026: the split is done — `main_window.py` ~1500→891
   (`ui/file_sync.py`, `ui/run_flow.py`, `ui/refresh_view.py`, `ui/dialogs.py`),
   `task_panel.py` ~1100→554 (`ui/test_results.py`, `ui/review_view.py`,
-  `ui/hints_view.py`, `ui/history_view.py`). Поведінка та імена методів ті самі,
-  лічильник тестів не змінився на жодному зрізі.
-- ✅ Закрито 26.09.2026: запис безпечніше — `paths.atomic_write_text()` (tmp +
-  `os.replace`) для `progress.json`, роадмапу, дайджестів і експорту; фонові
-  записи не частіше раза на 3 хв (`FILES_WRITE_INTERVAL`), явні дії й закривання
-  пишуть завжди.
-- Запис поруч із `.exe`: якщо покласти його в `Program Files`, запис без прав
-  адміністратора може не вдатися — або перенести ці файли в теку даних, або
-  чесно показати повідомлення.
-- Швидкість першого запуску: кожен запуск дочірнього процесу — це повторне
-  розпакування `--onefile` (заміряно 1228 мс холодним, 1063–1118 мс прогрітим).
-  `--onedir` або пул процесів прибрали б це; заодно треба заміряти й записати
-  бюджет (вікно, RAM) і не давати йому деградувати.
-- Піксельна звірка «код ↔ `.exe`» як крок CI: уже доведено, що різниця нульова,
-  лишилось зробити це автоматичним.
-- Англійська локалізація (Qt `.qm` + виніс рядків), high-DPI, доступність:
-  клавіатурна навігація по всьому, контраст, читалка екрана.
-- Метрики, а не бали: час розв'язку, кількість спроб до чистої, «залишкове
-  знання».
-- Ритм: нагадування (трей/сповіщення), пільговий день для серії, правило
-  20–30 хвилин із плану.
+  `ui/hints_view.py`, `ui/history_view.py`). Behaviour and method names
+  unchanged, test count identical at every slice.
+- ✅ Closed 26.09.2026: safer writes — `paths.atomic_write_text()` (tmp +
+  `os.replace`) for `progress.json`, the roadmap, digests and exports;
+  background writes at most every 3 min (`FILES_WRITE_INTERVAL`), explicit
+  actions and close always write.
+- Writes next to the `.exe`: placed in `Program Files`, writes without admin
+  rights may fail — either move those files to the data folder or show an
+  honest message.
+- First-launch speed: every child-process launch re-unpacks `--onefile`
+  (measured 1228 ms cold, 1063–1118 ms warmed). `--onedir` or a process pool
+  would remove it; budgets (window, RAM) should also be measured, recorded
+  and kept from degrading.
+- Pixel "code ↔ `.exe`" comparison as a CI step: zero difference already
+  proven, making it automatic is what is left.
+- English localisation (Qt `.qm` + string extraction), high-DPI,
+  accessibility: full keyboard navigation, contrast, screen reader.
+- Metrics instead of scores: time to solve, attempts to clean, "residual
+  knowledge".
+- Rhythm: reminders (tray/notifications), a streak grace day, the 20–30
+  minute rule from the plan.
 
-### P2 — продукт
+### P2 — product
 
-Теги понять замість тем; вправи «виправ читабельність»; мутаційні вправи; кілька
-профілів; експорт для ментора; веб/мобільний клієнт на тому ж ядрі; приватність і
-ліцензії (PySide6 — LGPL: для десктопного застосунку це ок, але примітку варто
-мати; джерела задач уже вказані).
+Concept tags instead of topics; "fix readability" exercises; mutation
+exercises; several profiles; mentor export; web/mobile client on the same
+core; privacy and licences (PySide6 is LGPL: fine for a desktop app, but worth
+a note; task sources are already credited).
 
-## Brainstorm: ідеї, які реально зрушать продукт
+## Brainstorm: ideas that would really move the product
 
-1. **«Готовність до фрілансу» — іспит раз на 4 тижні.** Найцінніше, чого зараз
-   немає: тренажер вимірює зусилля (XP, задачі, серія), але не спроможність. Раз
-   на місяць — 5 задач із нуля, без підказок і розбору, з таймером, випадково з
-   пройденого. Результат — окрема крива готовності й чесний вердикт «що саме не
-   дозволяє взяти перше замовлення». Вплив: високий, зусилля: середнє, ризик:
-   іспит може демотивувати — тому з безпечним тоном і без XP.
-2. **Персональні інтервали замість 1/3/7/30.** Зараз інтервали фіксовані
-   (`scoring.INTERVALS`), хоча в базі вже лежить історія кожного повторення.
-   SM-2-подібна модель (кожна задача має свій «коефіцієнт легкості») дає більше
-   знань за той самий час: легкі задачі повертаються рідше, слизькі — частіше.
-   Вплив: високий, зусилля: середнє, ризик: менша передбачуваність —
-   компенсується текстом «чому саме сьогодні».
-3. **Проєктна нитка замість 80 ізольованих задач.** Найбільша архітектурна
-   зміна: один власний CLI-застосунок, який росте місяць за місяцем, а задачі
-   стають «додати фічу у свій код». Тоді перевірки ганяються проти справжнього
-   проєкту, портфоліо складається саме, і видно, скільки коду написано тобою.
-   Вплив: високий (це те, що показують замовнику), зусилля: велике (curriculum
-   отримує етапи проєкту, runner — перевірки проти файлів), ризик: складніша
-   діагностика помилок.
-4. **Генератор вправ на читання коду.** Розбір коду вже вміє розпізнавати
-   патерни — той самий рушій може створювати вправи: взяти розв'язок курсу,
-   застосувати мутацію (змінити `range(n)` на `range(1, n)`, переплутати
-   `and`/`or`), показати код і попросити знайти баг. Запас вправ стає нескінченним
-   без ручного контенту — а це те, що зазвичай обмежує будь-який саморобний курс.
-   Вплив: середньо-високий, зусилля: середнє (генератор + порівняння «знайшов
-   місце»), ризик: треба перевіряти, що мутація справді змінює поведінку.
-5. **Локальний «розмовник про код».** Замкнути цикл «знайшли → навчили →
-   перевірили»: якщо розбір бачить `range(len())` третій раз за тиждень, огляд
-   пропонує 5-хвилинний дрил саме на `enumerate`, а не загальну тему. Це
-   найдешевший спосіб зробити навчання по-справжньому адаптивним — без жодної
-   моделі, лише на своїх же даних (двигун розбору вже є, дрилів уже 20). Вплив:
-   високий, зусилля: мале-середнє.
-6. **Тонший клієнт на тому ж ядрі.** Ядро не знає про Qt — тому можна зробити
-   веб-інтерфейс (локальний сервер на stdlib) або CLI, і ті самі 80 задач,
-   правила й звіти працюватимуть у браузері, на телефоні, на робочому ноутбуці.
-   Вплив: середній зараз, високий якщо продукт колись стане «для інших»;
-   зусилля: велике.
+1. **"Freelance readiness" — an exam every 4 weeks.** The most valuable thing
+   missing now: the trainer measures effort (XP, tasks, streak) but not
+   capability. Once a month — 5 tasks from zero, no hints and no review, on a
+   timer, random from the passed. The result is a separate readiness curve and
+   an honest verdict of "what exactly blocks the first order". Impact: high,
+   effort: medium, risk: the exam may demotivate — so a safe tone and no XP.
+2. **Personal intervals instead of 1/3/7/30.** Intervals are fixed now
+   (`scoring.INTERVALS`), though the database already holds every review's
+   history. An SM-2-like model (each task with its own "easiness factor") buys
+   more knowledge for the same time: easy tasks return rarer, slippery ones
+   more often. Impact: high, effort: medium, risk: less predictability —
+   compensated by "why exactly today" text.
+3. **A project thread instead of 80 isolated tasks.** The biggest architectural
+   change: one own CLI app growing month by month, with tasks becoming "add a
+   feature to your code". Then checks run against a real project, the
+   portfolio assembles itself, and how much code you wrote is visible. Impact:
+   high (that is what clients are shown), effort: large (curriculum gains
+   project stages, the runner gains checks against files), risk: harder error
+   diagnostics.
+4. **A code-reading exercise generator.** Code review already recognises
+   patterns — the same engine can create exercises: take a course solution,
+   apply a mutation (change `range(n)` to `range(1, n)`, swap `and`/`or`), show
+   the code and ask to find the bug. The exercise pool becomes infinite with no
+   manual content — and that is what usually limits any homemade course.
+   Impact: medium-high, effort: medium (generator + "found the spot"
+   comparison), risk: mutations must be verified to really change behaviour.
+5. **A local "code phrasebook".** Close the "found → taught → verified" loop:
+   if review sees `range(len())` a third time in a week, the digest offers a
+   5-minute drill on exactly `enumerate`, not a general topic. The cheapest way
+   to make learning truly adaptive — with no model at all, only on its own
+   data (the review engine exists, 20 drills already). Impact: high, effort:
+   small-medium.
+6. **A thinner client on the same core.** The core knows no Qt — so a web UI
+   (stdlib local server) or CLI is possible, and the same 80 tasks, rules and
+   reports would work in a browser, on a phone, on a work laptop. Impact:
+   medium now, high if the product ever becomes "for others"; effort: large.
 
-## Спрощення, які варто зробити рано чи пізно
+## Simplifications worth making sooner or later
 
-- 28 stub-задач — це не задачі, а чекліст із 5 блоків; окрема категорія в дереві
-  й статистиці додає шуму.
-- «Тема» — надто широке поняття для діагностики (теги понять дадуть точність).
-- Вкладок панелі вже **шість** (історія додалася) — це вже за межею «п'яти»:
-  історію спроб логічніше злити з «Тестами» або «Рев'ю», ніж додавати сьому.
-- `progress.json` і `Python-Roadmap.md` зараз у Git: історія прогресу — приємна,
-  але кожен вердикт робить робочу копію брудною. Або лишати свідомо, або вивести
-  з індексу й тримати прогрес лише в базі.
-- `pytrainer.db.moved` і `backups.moved/` у корені проєкту вже нічим не потрібні
-  — копія лежить у новій теці, старі файли можна видалити.
+- 28 stub tasks are not tasks but a 5-block checklist; a separate category in
+  the tree and stats adds noise.
+- "Topic" is too broad a notion for diagnostics (concept tags would give
+  precision).
+- The panel already has **six** tabs (history joined) — past the "five" limit:
+  attempt history belongs merged into "Tests" or "Review" rather than a
+  seventh tab.
+- `progress.json` and `Python-Roadmap.md` are in Git now: progress history is
+  nice, but every verdict dirties the working copy. Either keep deliberately
+  or unindex and keep progress in the database only.
+- `pytrainer.db.moved` and `backups.moved/` in the project root serve nothing
+  anymore — the copy sits in the new folder, the old files can go.
