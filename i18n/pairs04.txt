@@ -1,0 +1,74 @@
+# Batch 4: RunFlow (14), SideNav (20), TaskPanel (16), TestResults (23)
+RunFlow ||| Перевірка тестами ||| Checking with tests
+RunFlow ||| Запуск коду ||| Running code
+RunFlow ||| → Ввід: {stdin} ||| → Input: {stdin}
+RunFlow ||| (вивід порожній) ||| (output empty)
+RunFlow ||| …вивід обрізано, щоб не з'їсти пам'ять ||| …output truncated to save memory
+RunFlow ||| Код виконано ||| Code ran
+RunFlow ||| Задача здана! +{xp} XP ||| Task passed! +{xp} XP
+RunFlow ||| бонус за повторення +{xp} XP ||| review bonus +{xp} XP
+RunFlow ||| Усі перевірки пройдено · {parts} ||| All checks passed · {parts}
+RunFlow ||| ❄ Холодне повторення: згадав без підказок ✓ ||| ❄ Cold review: recalled with no hints ✓
+RunFlow ||| Задача утримана — більше не в черзі повторень 🎯 ||| Task retained — out of the review queue 🎯
+RunFlow ||| Пройдено {passed} із {total} ||| Passed {passed} of {total}
+RunFlow ||| ❄ Холодне повторення: не згадав — задача повернеться в чергу. Це нормально: саме такі прогалини й ловляться. ||| ❄ Cold review: didn't recall — the task returns to the queue. That's fine: catching gaps like this is the point.
+RunFlow ||| Є помилки — дивись вкладку «Тести» ||| There are errors — see the "Tests" tab
+SideNav ||| Шлях: від нуля до перших грошей ||| Path: from zero to first earnings
+SideNav ||| 0 із 0 пройдено ||| 0 of 0 done
+SideNav ||| Пошук задачі… ||| Search tasks…
+SideNav ||| Знайдено задач: {n} ||| Tasks found: {n}
+SideNav ||| Шлях ||| Path
+SideNav ||| План від нуля до перших грошей ||| Plan from zero to first earnings
+SideNav ||| Повтор ||| Review
+SideNav ||| Черга повторень: що час згадати ||| Review queue: what's due
+SideNav ||| Прогрес ||| Progress
+SideNav ||| Скільки здано, XP, серія днів, слабкі місця ||| Passed count, XP, day streak, weak spots
+SideNav ||| План ||| Plan
+SideNav ||| Що робити сьогодні — готовий план на вечір ||| What to do today — an evening plan, ready
+SideNav ||| {done} із {total} пройдено ||| {done} of {total} done
+SideNav ||| Повторення · {n} ||| Review · {n}
+SideNav ||| Повторення ||| Review
+SideNav ||| Час повторити: {n} ||| Due for review: {n}
+SideNav ||| Черга повторень порожня ||| Review queue is empty
+SideNav ||| План на сьогодні: {n} кроків, ≈{time} хв ||| Today's plan: {n} steps, ≈{time} min
+SideNav ||| План на сьогодні порожній ||| Today's plan is empty
+SideNav ||| Повторень: {reviews} · помилок у журналі: {mistakes} ||| Reviews: {reviews} · mistakes in journal: {mistakes}
+TaskPanel ||| Задача ||| Task
+TaskPanel ||| Тести ||| Tests
+TaskPanel ||| Рев'ю ||| Review
+TaskPanel ||| Довідка ||| Reference
+TaskPanel ||| Підказки ||| Hints
+TaskPanel ||| Історія ||| History
+TaskPanel ||| Ще не перевірялося ||| Not checked yet
+TaskPanel ||| Розібрати код ||| Review code
+TaskPanel ||| Розбір не оцінює і не перевіряє: він каже, що в коді буде важко читати іншій людині — і як це виправити (F6) ||| Review neither grades nor checks: it tells you what another human will find hard to read in your code — and how to fix it (F6)
+TaskPanel ||| Міні-довідка з теми задачі. Можна вибрати будь-яку іншу — це не впливає на XP. ||| Mini-reference for the task topic. Pick any other — it doesn't affect XP.
+TaskPanel ||| Холодне повторення: підказки й розв'язок недоступні, доки не завершиш спробу. Саме в цьому суть — згадати самому. ||| Cold review: hints and solution stay locked until you finish the attempt. That's the point — recall it on your own.
+TaskPanel ||| Історії ще немає ||| No history yet
+TaskPanel ||| Виконано поза тренажером ||| Done outside the trainer
+TaskPanel ||| План ||| Plan
+TaskPanel ||| Цей пункт не перевіряється тестами: зроби його у своєму терміналі й познач галочкою. ||| This item isn't checked by tests: do it in your own terminal and tick it off.
+TaskPanel ||| Джерело задачі: {credit}. Умова переказана українською, перевірки — власні. ||| Task source: {credit}. Statement retold in English, checks are our own.
+TestResults ||| перевірка виводу програми ||| program output check
+TestResults ||| перевірка коду ||| code check
+TestResults ||| Це пункт поза тренажером ||| This is an off-trainer item
+TestResults ||| Тут немає прихованих тестів — результат оцінюєш ти сам. ||| No hidden tests here — you grade the result yourself.
+TestResults ||| перевірка ||| check
+TestResults ||| перевірки ||| checks
+TestResults ||| перевірок ||| checks
+TestResults ||| Буде {n} {form} — ще не запускались ||| {n} {form} — not run yet
+TestResults ||| Перевірки приховані: ти бачиш, що саме вони вимагають, але не сам код тесту. Натисни «Перевірити» (F5), щоб прогнати їх. ||| Checks are hidden: you see what they demand, but not the test code itself. Press "Check" (F5) to run them.
+TestResults ||| пройдено ||| passed
+TestResults ||| Насправді вивела:\n{lines} ||| Actually printed:\n{lines}
+TestResults ||| Усі перевірки пройдено: {passed} із {total} ✓ ||| All checks passed: {passed} of {total} ✓
+TestResults ||| Пройдено {passed} із {total} — є що виправити ||| Passed {passed} of {total} — something to fix
+TestResults ||| Код зупинено за таймаутом ||| Code stopped on timeout
+TestResults ||| Код впав з помилкою ||| Code crashed with an error
+TestResults ||| Код виконано без помилок ||| Code ran with no errors
+TestResults ||| Це був звичайний запуск. Натисни «Перевірити» (F5), щоб прогнати приховані тести. ||| That was a plain run. Press "Check" (F5) to run the hidden tests.
+TestResults ||| Так тримати! Наступна задача — у списку зліва (Ctrl+N). ||| Keep it up! Next task is in the list on the left (Ctrl+N).
+TestResults ||| Перша проблема: {err} ||| First problem: {err}
+TestResults ||| Подивись, яка саме перевірка впала, вище. ||| See which check failed, above.
+TestResults ||| Що це означає ||| What this means
+TestResults ||| Помилка — це підказка, а не вирок: Python каже, де саме код розійшовся з твоїм задумом. ||| An error is a hint, not a verdict: Python tells you exactly where the code diverged from your intent.
+TestResults ||| ↪  Перейти до рядка {n} ||| ↪  Go to line {n}

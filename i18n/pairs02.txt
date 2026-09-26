@@ -1,0 +1,65 @@
+# Batch 2: HintsView (15), HistoryView (6), ReviewView (6), ReviewPage (9), PlanPage (13), RefreshView (15)
+HintsView ||| Зняти позначку ||| Unmark done
+HintsView ||| Позначити виконаним ||| Mark done
+HintsView ||| Підказка {n} · {title} ||| Hint {n} · {title}
+HintsView ||| Вставити розв'язок у редактор ||| Insert the solution into the editor
+HintsView ||| Розв'язок відкрито після достатньої роботи над задачею. Подивись — і спробуй переписати код своїми руками. ||| The solution unlocked after enough work on the task. Take a look — then try rewriting the code by hand.
+HintsView ||| Підказка {n} · розв'язок — заблоковано ||| Hint {n} · solution locked
+HintsView ||| Відкриється через {left} активної роботи над задачею (з {total} хв). Працювало: {done}. ||| Unlocks after {left} of active work on the task (of {total} min). Worked so far: {done}.
+HintsView ||| Підказка {n} · недоступна в холодному повторенні ||| Hint {n} · unavailable in cold review
+HintsView ||| Розв'язок повернеться, щойно завершиш холодне повторення. ||| The solution comes back once you finish the cold review.
+HintsView ||| Холодне повторення: спершу згадай сам. Підказки повернуться після спроби. ||| Cold review: recall it on your own first. Hints return after the attempt.
+HintsView ||| Здаси зараз — отримаєш {n} XP ||| Pass it now — earn {n} XP
+HintsView ||| база {n} XP ||| base {n} XP
+HintsView ||| підказок відкрито: {n} ||| hints opened: {n}
+HintsView ||| Підказки 🔒 ||| Hints 🔒
+HintsView ||| Підказки ||| Hints
+HistoryView ||| Ще жодного запуску цієї задачі. ||| No runs of this task yet.
+HistoryView ||| здано ✓ ||| passed ✓
+HistoryView ||| ще не здана ||| not passed yet
+HistoryView ||| Задача: {status} · XP: {xp} · підказок відкрито: {hints} · час над задачею: {time} ||| Task: {status} · XP: {xp} · hints opened: {hints} · time on task: {time}
+HistoryView ||| запуск ||| run
+HistoryView ||| перевірка ||| check
+ReviewView ||| Рев'ю · {n} ||| Review · {n}
+ReviewView ||| Рев'ю ||| Review
+ReviewView ||| Розібрати ще раз ||| Review again
+ReviewView ||| Розібрати код ||| Review code
+ReviewView ||| Рядок {n} ||| Line {n}
+ReviewView ||| ↪  Рядок {n} ||| ↪  Line {n}
+ReviewPage ||| Задачі повертаються через 1 / 3 / 7 / 30 днів після того, як ти здав їх не з першого разу. Натисни на задачу, щоб повторити. ||| Tasks come back 1 / 3 / 7 / 30 days after a non-first-try pass. Click a task to review it.
+ReviewPage ||| ❄  Холодне повторення: випадкова задача ||| ❄  Cold review: a random task
+ReviewPage ||| Уже здана задача без підказок і розв'язку, з таймером. Вердикт іде в чергу повторень: згадав — інтервал довший, не згадав — задача повертається завтра. ||| An already-passed task with no hints and no solution, on a timer. The verdict feeds the review queue: recalled — longer interval, didn't — the task returns tomorrow.
+ReviewPage ||| СЬОГОДНІ ||| TODAY
+ReviewPage ||| ДАЛІ ||| LATER
+ReviewPage ||| Черга порожня. Здавай задачі — і тут з'явиться розклад повторень. ||| Queue is empty. Pass tasks — and the review schedule appears here.
+ReviewPage ||| ТВОЇ ПОМИЛКИ ||| YOUR MISTAKES
+ReviewPage ||| Помилка, на якій спіткнувся, — найкорисніше, що є в цьому тренажері. Натисни, щоб повернутися до задачі. ||| The mistake you tripped on is the most useful thing in this trainer. Click to return to the task.
+ReviewPage ||| Помилка «висить», доки задачу не здано чистим проходом — без підказок і розв'язку. Жовте «закрито з допомогою» означає, що задачу варто згадати холодним повторенням. ||| A mistake "hangs" until the task is passed cleanly — no hints, no solution. Yellow "closed with help" means the task is worth recalling in a cold review.
+PlanPage ||| повторення ||| review
+PlanPage ||| слабке місце ||| weak spot
+PlanPage ||| нова задача ||| new task
+PlanPage ||| {h} год {m} хв ||| {h} h {m} min
+PlanPage ||| {h} год ||| {h} h
+PlanPage ||| {m} хв ||| {m} min
+PlanPage ||| План на сьогодні ||| Today's plan
+PlanPage ||| Усе написане вже здано 🎉 Наступні блоки плану ще в розробці — а поки що повертайся до слабких тем, щоб не втратити форму. ||| Everything written is already passed 🎉 The next plan blocks are still in development — meanwhile revisit weak topics to stay in shape.
+PlanPage ||| План на сьогодні порожній ||| Today's plan is empty
+PlanPage ||| Це не помилка: або все здано, або черга повторень порожня. ||| Not an error: either everything is passed or the review queue is empty.
+PlanPage ||| План на сьогодні · {n} кроків · ≈{time} ||| Today's plan · {n} steps · ≈{time}
+PlanPage ||| Порядок не випадковий: спершу те, що ось-ось забудеться, потім слабке місце, і аж потім нове. ||| The order is deliberate: first what is about to be forgotten, then the weak spot, and only then something new.
+PlanPage ||| хв ||| min
+RefreshView ||| сьогодні ||| today
+RefreshView ||| учора ||| yesterday
+RefreshView ||| {date} · прострочено ||| {date} · overdue
+RefreshView ||| {date} · сьогодні ||| {date} · today
+RefreshView ||| {date} · через {n} дн. ||| {date} · in {n} d
+RefreshView ||| перевірка ||| review
+RefreshView ||| Закрито з допомогою — згадай задачу холодним повторенням ||| Closed with help — recall the task in a cold review
+RefreshView ||| Натисни, щоб повернутися до задачі ||| Click to return to the task
+RefreshView ||| {date} · інтервал {n} дн. ||| {date} · every {n} d
+RefreshView ||| На повторення: {n} ||| For review: {n}
+RefreshView ||| Серія: {n} дн. ||| Streak: {n} d
+RefreshView ||| Серія: 1 день ||| Streak: 1 day
+RefreshView ||| Сьогодні: {n} запусків ✓ ||| Today: {n} runs ✓
+RefreshView ||| Сьогодні: 0 — не втрать серію ||| Today: 0 — keep the streak alive
+RefreshView ||| Сьогодні: 0 запусків ||| Today: 0 runs

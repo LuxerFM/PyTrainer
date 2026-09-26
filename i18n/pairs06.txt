@@ -1,0 +1,25 @@
+# Batch 6: StatsPage (24)
+StatsPage ||| здано задач ||| tasks passed
+StatsPage ||| утримано ||| retained
+StatsPage ||| серія днів ||| day streak
+StatsPage ||| успішність спроб ||| attempt success
+StatsPage ||| час у тренажері ||| time in trainer
+StatsPage ||| Тижневий огляд · 7 днів ||| Weekly digest · 7 days
+StatsPage ||| Що сталося за тиждень: скільки здано, на чому спіткнувся, що робити далі. Звіт можна зберегти файлом. ||| What happened this week: how much passed, what tripped you, what next. The report can be saved to a file.
+StatsPage ||| СЛАБКІ МІСЦЯ ||| WEAK SPOTS
+StatsPage ||| Натисни на тему — тренажер відкриє задачу, на якій її можна підтягнути. ||| Click a topic — the trainer opens a task to drill it.
+StatsPage ||| Поки що все рівно. Слабкі теми з'являться, коли буде кілька провалів — і саме їх тренажер підсвітить. ||| Even so far. Weak topics appear after a few fails — and the trainer highlights exactly those.
+StatsPage ||| XP ЗА 4 ТИЖНІ ||| XP OVER 4 WEEKS
+StatsPage ||| АКТИВНІСТЬ · 8 ТИЖНІВ ||| ACTIVITY · 8 WEEKS
+StatsPage ||| кожна клітинка — день, насиченіший колір = більше запусків ||| each cell is a day, richer color = more runs
+StatsPage ||| {n} год ||| {n} h
+StatsPage ||| успішних спроб {rate}% ({passes} із {attempts}) · здано {done}/{total} ||| {rate}% successful attempts ({passes} of {attempts}) · passed {done}/{total}
+StatsPage ||| Натисни, щоб тренувати цю тему ||| Click to drill this topic
+StatsPage ||| Цього тижня занять ще не було. ||| No sessions this week yet.
+StatsPage ||| Тиждень: {checks} {checks_form} ({passes} успішних) · здано {solved} · відкрито {open} {open_form} ||| Week: {checks} {checks_form} ({passes} successful) · passed {solved} · opened {open} {open_form}
+StatsPage ||| перевірка ||| check
+StatsPage ||| перевірки ||| checks
+StatsPage ||| перевірок ||| checks
+StatsPage ||| помилка ||| mistake
+StatsPage ||| помилки ||| mistakes
+StatsPage ||| помилок ||| mistakes

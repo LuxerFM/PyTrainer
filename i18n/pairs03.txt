@@ -1,0 +1,53 @@
+# Batch 3: DigestDialog (28), FileSync (24)
+DigestDialog ||| Тижневий огляд ||| Weekly digest
+DigestDialog ||| Огляд складається сам: із журналу спроб, черги повторень і журналу помилок. Це не оцінка, а відповідь на питання «що робити далі». ||| The digest compiles itself: from the attempt journal, the review queue and the mistake journal. Not a grade — an answer to "what next".
+DigestDialog ||| здано нових ||| new passed
+DigestDialog ||| перевірок ||| checks
+DigestDialog ||| успішних ||| successful
+DigestDialog ||| днів із {n} ||| days of {n}
+DigestDialog ||| серія днів ||| day streak
+DigestDialog ||| XP загалом ||| total XP
+DigestDialog ||| ЩО ЗДАНО ||| PASSED
+DigestDialog ||| НАЙВАЖЧЕ ||| HARDEST
+DigestDialog ||| ПОМИЛКИ ||| MISTAKES
+DigestDialog ||| ЩО РОБИТИ ДАЛІ ||| WHAT NEXT
+DigestDialog ||| Зберегти звіт… ||| Save report…
+DigestDialog ||| Markdown-файл — його можна перечитати через місяць, коли цифри в тренажері вже інші ||| A markdown file — reread it in a month, when the trainer's numbers are different
+DigestDialog ||| Закрити ||| Close
+DigestDialog ||| Нічого — і це нормально, якщо тиждень був важкий. ||| Nothing — and that's fine if the week was rough.
+DigestDialog ||| ⚠  {title} — {n} провалів ||| ⚠  {title} — {n} fails
+DigestDialog ||| Провалів не було. ||| No fails.
+DigestDialog ||| За тиждень жодної помилки в журналі. ||| No mistakes in the journal this week.
+DigestDialog ||| Усе зроблено 🎉 ||| All done 🎉
+DigestDialog ||| ↻  Повторити: {n} задач — вони вже в черзі повторень ||| ↻  Review: {n} tasks — already in the review queue
+DigestDialog ||| ⚠  Слабка тема{topic}: {pick} ||| ⚠  Weak topic{topic}: {pick}
+DigestDialog ||| →  Нова задача: {title} ||| →  New task: {title}
+DigestDialog ||| Натисни, щоб відкрити задачу ||| Click to open the task
+DigestDialog ||| Зберегти тижневий звіт ||| Save the weekly report
+DigestDialog ||| Не вдалося зберегти ||| Could not save
+DigestDialog ||| Файл не записався.\n\n{err} ||| File was not written.\n\n{err}
+DigestDialog ||| Збережено: {name} ||| Saved: {name}
+FileSync ||| Роадмап оновлено: {name} ||| Roadmap updated: {name}
+FileSync ||| Прогрес збережено: {name} ||| Progress saved: {name}
+FileSync ||| Експортувати прогрес ||| Export progress
+FileSync ||| Прогрес експортовано: {name} ||| Progress exported: {name}
+FileSync ||| Імпортувати прогрес ||| Import progress
+FileSync ||| Не вдалося прочитати ||| Could not read
+FileSync ||| Файл не схожий на progress.json.\n\n{err} ||| File doesn't look like progress.json.\n\n{err}
+FileSync ||| Готово ||| Done
+FileSync ||| Відновлено задач: {n}.\nЯкщо задача вже була здана — її XP і черга повторень теж підтягнулись. ||| Tasks restored: {n}.\nAlready-passed tasks pulled their XP and review queue along.
+FileSync ||| Немає копій ||| No backups
+FileSync ||| Тека копій порожня — відкочувати нічого.\nКопії робляться самі при кожному запуску. ||| Backup folder is empty — nothing to roll back.\nBackups are made automatically on every launch.
+FileSync ||| Відновити з копії ||| Restore from backup
+FileSync ||| Копія: ||| Backup:
+FileSync ||| Підтвердити відкат ||| Confirm rollback
+FileSync ||| Поточна база буде замінена копією:\n{name}\n\nПрогрес, зроблений після цієї копії, зникне з вікна — але спершу він збережеться як окрема страхова копія, її можна повернути так само.\n\nПродовжити? ||| The current database will be replaced with the backup:\n{name}\n\nProgress made after this backup disappears from view — but first it is saved as a separate safety backup, restorable the same way.\n\nContinue?
+FileSync ||| Не вдалося відновити ||| Could not restore
+FileSync ||| База не чіпалась.\n\n{err} ||| Database untouched.\n\n{err}
+FileSync ||| Базу відновлено з копії:\n{name}\n ||| Database restored from backup:\n{name}\n
+FileSync ||| Поточний стан перед відкатом збережено як:\n{name} ||| Pre-rollback state saved as:\n{name}
+FileSync ||| Немає що експортувати ||| Nothing to export
+FileSync ||| Спершу здай хоча б одну задачу з тестами — і її код буде що експортувати. ||| Pass at least one tested task first — then there is code to export.
+FileSync ||| Куди зберегти розв'язані задачі ||| Where to save solved tasks
+FileSync ||| Експортовано {n} задач у {name} ||| Exported {n} tasks to {name}
+FileSync ||| Збережено {n} файлів і README.md у папку:\n{folder}\n\nНаступний крок із роадмапу — викласти це на GitHub. ||| Saved {n} files and README.md to:\n{folder}\n\nThe roadmap's next step — put it on GitHub.

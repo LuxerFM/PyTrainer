@@ -1,0 +1,102 @@
+# Batch 5: MainWindow (101)
+MainWindow ||| {ver} — тренажер Python ||| {ver} — Python trainer
+MainWindow ||| Файл ||| File
+MainWindow ||| Зберегти код… ||| Save code…
+MainWindow ||| Скинути код до заготовки ||| Reset code to starter
+MainWindow ||| Експортувати розв'язані задачі… ||| Export solved tasks…
+MainWindow ||| Експортувати прогрес… ||| Export progress…
+MainWindow ||| Імпортувати прогрес… ||| Import progress…
+MainWindow ||| Відновити з копії… ||| Restore from backup…
+MainWindow ||| Відкрити теку з даними ||| Open data folder
+MainWindow ||| Відкрити файл журналу ||| Open log file
+MainWindow ||| Оновити Python-Roadmap.md ||| Refresh Python-Roadmap.md
+MainWindow ||| Вихід ||| Quit
+MainWindow ||| Запуск ||| Run
+MainWindow ||| Запустити ||| Run
+MainWindow ||| Перевірити тестами ||| Check with tests
+MainWindow ||| Розібрати мій код (рев'ю) ||| Review my code
+MainWindow ||| Очистити консоль ||| Clear console
+MainWindow ||| Навчання ||| Study
+MainWindow ||| План на сьогодні ||| Today's plan
+MainWindow ||| На повторення ||| For review
+MainWindow ||| Холодне повторення (випадкова задача) ||| Cold review (random task)
+MainWindow ||| Прогрес і слабкі місця ||| Progress and weak spots
+MainWindow ||| Тижневий огляд ||| Weekly digest
+MainWindow ||| Наступна незавершена задача ||| Next unfinished task
+MainWindow ||| Знайти задачу ||| Find task
+MainWindow ||| Позначити виконаним (зроблено поза тренажером) ||| Mark done (completed outside the trainer)
+MainWindow ||| Скинути прогрес цієї задачі ||| Reset this task's progress
+MainWindow ||| Вигляд ||| View
+MainWindow ||| Темна / світла тема ||| Dark / light theme
+MainWindow ||| Більший шрифт ||| Larger font
+MainWindow ||| Менший шрифт ||| Smaller font
+MainWindow ||| Звичайний розмір шрифту ||| Default font size
+MainWindow ||| Довідка ||| Help
+MainWindow ||| Гарячі клавіші ||| Keyboard shortcuts
+MainWindow ||| Про тренажер ||| About PyTrainer
+MainWindow ||| ▶  Запустити ||| ▶  Run
+MainWindow ||| ✓  Перевірити ||| ✓  Check
+MainWindow ||| Підказка ||| Hint
+MainWindow ||| ↺  Скинути ||| ↺  Reset
+MainWindow ||| Сьогодні: 0 запусків ||| Today: 0 runs
+MainWindow ||| На повторення: 0 ||| For review: 0
+MainWindow ||| Серія: 0 дн. ||| Streak: 0 d
+MainWindow ||| Ctrl+Enter — запустити · F5 — перевірити тестами ||| Ctrl+Enter — run · F5 — check with tests
+MainWindow ||| Тут з'явиться вивід твоєї програми… ||| Your program's output appears here…
+MainWindow ||| КОНСОЛЬ ||| CONSOLE
+MainWindow ||| Очистити ||| Clear
+MainWindow ||| Готово ||| Done
+MainWindow ||| Рядок 1, стовпець 1 ||| Line 1, column 1
+MainWindow ||| Цей пункт робиться не в тренажері, а у твоєму терміналі — саме там навичка й закріплюється. Зробив? Познач галочкою, щоб вона з'явилась і в Python-Roadmap.md. ||| This item is done in your own terminal, not in the trainer — that's where the skill sticks. Done? Tick it off so it shows in Python-Roadmap.md too.
+MainWindow ||| Задачу не знайдено. ||| Task not found.
+MainWindow ||| Пункт поза тренажером — познач галочкою, коли зробиш ||| Off-trainer item — tick it off when done
+MainWindow ||| Задачу не знайдено ||| Task not found
+MainWindow ||| ❄ Холодне повторення: {title}. Підказки й розв'язок недоступні, час — до {mins} хв. Згадай сам — і тисни F5. ||| ❄ Cold review: {title}. No hints, no solution, up to {mins} min. Recall it on your own — then press F5.
+MainWindow ||| Повторення: {title} ||| Review: {title}
+MainWindow ||| Відкрито: {title} ||| Opened: {title}
+MainWindow ||| Усі задачі, які вже написані, здані 🎉 ||| All written tasks are passed 🎉
+MainWindow ||| Холодне повторення — для вже зданих задач. Здай якусь задачу (крім відкритої зараз) — і воно стане доступним. ||| Cold review is for already-passed tasks. Pass any task (other than the open one) — and it unlocks.
+MainWindow ||| з черги повторень ||| from the review queue
+MainWindow ||| випадкова зі зданих ||| random from passed
+MainWindow ||| ❄ Холодне повторення · {source} · до {mins} хв ||| ❄ Cold review · {source} · up to {mins} min
+MainWindow ||| Час вийшов. Допиши думку й тисни F5: краще здати як є, ніж просидіти над задачею до ночі. ||| Time's up. Finish the thought and press F5: better to submit as-is than sit on the task till night.
+MainWindow ||| Холодне повторення завершено — підказки знову доступні, якщо захочеш пройти задачу спокійно. ||| Cold review finished — hints are available again if you want to walk the task calmly.
+MainWindow ||| Спершу вибери пункт у плані зліва ||| First pick an item in the plan on the left
+MainWindow ||| Зняти позначку? ||| Unmark?
+MainWindow ||| «{title}» повернеться в план як незавершений пункт. ||| "{title}" returns to the plan as an unfinished item.
+MainWindow ||| Позначку знято: {title} ||| Unmarked: {title}
+MainWindow ||| Позначено виконаним: {title} ||| Marked done: {title}
+MainWindow ||| Скинути код? ||| Reset code?
+MainWindow ||| Поточний код буде замінено на заготовку. Продовжити? ||| Current code will be replaced with the starter. Continue?
+MainWindow ||| Код скинуто до заготовки ||| Code reset to starter
+MainWindow ||| Скинути прогрес задачі? ||| Reset task progress?
+MainWindow ||| Прогрес «{title}» буде стерто: спроби, XP, підказки, черга повторень. Далі — як уперше. ||| Progress for "{title}" will be wiped: attempts, XP, hints, review queue. Then — as if first time.
+MainWindow ||| Прогрес задачі скинуто ||| Task progress reset
+MainWindow ||| Зберегти код ||| Save code
+MainWindow ||| Збережено: {name} ||| Saved: {name}
+MainWindow ||| Ввід для запуску: {feed} ||| Run input: {feed}
+MainWindow ||| У цій задачі є файли: {files} ||| This task has files: {files}
+MainWindow ||| У файлі немає рядка {n} ||| File has no line {n}
+MainWindow ||| Рядок {n} — саме тут сталася помилка ||| Line {n} — the error happened right here
+MainWindow ||| Тренуємо тему: {topic} ||| Training topic: {topic}
+MainWindow ||| У темі «{topic}» усі задачі здані — час на повторення ||| All tasks in "{topic}" are passed — time to review
+MainWindow ||| Спершу вибери задачу з плану зліва ||| First pick a task from the plan on the left
+MainWindow ||| Рев'ю коду: {summary} ||| Code review: {summary}
+MainWindow ||| » Рев'ю коду: {phrase} — вкладка «Рев'ю» ||| » Code review: {phrase} — the "Review" tab
+MainWindow ||| Підказка {n} — XP за задачу тепер {xp} ||| Hint {n} — task XP now {xp}
+MainWindow ||| Вставити розв'язок? ||| Insert solution?
+MainWindow ||| Код у редакторі буде замінено готовим розв'язком.\n\nXP за цю задачу впаде до {price}, а сама задача потрапить у чергу повторень.\n\nУсе одно спробуй перебрати код руками — інакше на наступній задачі буде так само важко. ||| Editor code will be replaced with the ready solution.\n\nTask XP drops to {price}, and the task lands in the review queue.\n\nStill, try retyping the code by hand — otherwise the next task will hurt the same way.
+MainWindow ||| Розв'язок вставлено в редактор. Перепиши його своїми руками — це і є вправа. ||| Solution inserted into the editor. Retype it by hand — that is the exercise.
+MainWindow ||| ❄ Холодне повторення · лишилось {m}:{s:02d} ||| ❄ Cold review · {m}:{s:02d} left
+MainWindow ||| ❄ Холодне повторення · час вийшов — здай як є (F5) ||| ❄ Cold review · time's up — submit as-is (F5)
+MainWindow ||| Здано ✓ · час над задачею {m} хв ||| Passed ✓ · time on task {m} min
+MainWindow ||| Час над задачею {clock} · розв'язок через {m}:{s:02d} ||| Time on task {clock} · solution in {m}:{s:02d}
+MainWindow ||| Час над задачею {clock} · розв'язок відкрито ||| Time on task {clock} · solution unlocked
+MainWindow ||| ⏳  Виконується… ||| ⏳  Running…
+MainWindow ||| ⏳  Перевіряю… ||| ⏳  Checking…
+MainWindow ||| Рядок {line}, стовпець {col} ||| Line {line}, column {col}
+MainWindow ||| Тема: {name} ||| Topic: {name}
+MainWindow ||| світла ||| light
+MainWindow ||| темна ||| dark
+MainWindow ||| Масштаб шрифту: {n}% ||| Font scale: {n}%
+MainWindow ||| Масштаб шрифту: 100% ||| Font scale: 100%
