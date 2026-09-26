@@ -1,25 +1,26 @@
-"""Шляхи до даних і ресурсів — однаково правильні і з коду, і з .exe.
+"""Paths to data and resources — equally correct from code and from .exe.
 
-Тут два різні роди файлів, і плутати їх не можна:
+Two different kinds of files live here, and they must not be mixed:
 
-* **Ресурси** (іконка, картинки) лежать усередині застосунку: у зібраному
-  `.exe` — у теці розпакування `sys._MEIPASS`, з коду — у корені проєкту.
-  Для них є `resource()`.
-* **Дані людини** (база з багаторічним прогресом, копії бази) живуть у
-  службовій теці системи: `%LOCALAPPDATA%\\PyTrainer` на Windows,
-  `~/.local/share/PyTrainer` в інших. Для них є `data_folder()`.
+* **Resources** (icon, images) ship inside the app: in the built `.exe` —
+  in the `sys._MEIPASS` unpack folder, from code — in the project root.
+  `resource()` is for them.
+* **Human data** (the long-lived progress database, db copies) lives in the
+  system service folder: `%LOCALAPPDATA%\\PyTrainer` on Windows,
+  `~/.local/share/PyTrainer` elsewhere. `data_folder()` is for it.
 
-Чому дані не поруч із `.exe`, як було раніше: на цій машині робочий стіл
-перенаправлено в OneDrive, тому «поруч із .exe» означало «в синхронізованій
-теці». SQLite у такій теці — це побита база рано чи пізно: хмара читає й пише
-файл тоді, коли їй захочеться, і може зробити це посеред транзакції. Тому база
-й копії переїхали в службову теку, а `progress.json` і `Python-Roadmap.md`
-лишились поруч із `.exe` — це текстові файли для людини, їм синхронізація не
-заважає, а навпаки: їх зручно тримати в Git або на флешці.
+Why data is not next to the `.exe` anymore: on this machine the desktop is
+redirected to OneDrive, so "next to the .exe" meant "in a synced folder".
+SQLite in such a folder is a broken database sooner or later: the cloud reads
+and writes the file whenever it feels like it, possibly mid-transaction. So
+the database and its copies moved to the service folder, while `progress.json`
+and `Python-Roadmap.md` stayed next to the `.exe` — plain text files for a
+human, sync does not hurt them, quite the opposite: handy in Git or on a
+flash drive.
 
-Перенос робиться **один раз** і зі страховкою: старий файл копіюється в нову
-теку, і лише після успішного копіювання перейменовується в `*.moved`. Так
-найгірший випадок — дві копії прогресу замість жодної.
+The move runs **once** and insured: the old file is copied to the new folder
+first, and only after a successful copy renamed to `*.moved`. So the worst
+case is two copies of the progress instead of none.
 """
 
 from __future__ import annotations
@@ -36,15 +37,15 @@ DATA_ENV = "PYTRAINER_DATA_DIR"
 
 
 def is_frozen() -> bool:
-    """True, якщо код запущено зі зібраного .exe (PyInstaller)."""
+    """True when running from the built .exe (PyInstaller)."""
     return bool(getattr(sys, "frozen", False))
 
 
 def app_folder() -> Path:
-    """Тека застосунку: звичайний запуск — корінь проєкту, .exe — тека .exe.
+    """App folder: plain run — project root, .exe — the .exe folder.
 
-    Тут лежать файли **для людини**: генерований роадмап і `progress.json`,
-    який можна перенести на інший комп'ютер або покласти в Git.
+    Files **for a human** live here: the generated roadmap and `progress.json`,
+    which can be moved to another machine or kept in Git.
     """
     if is_frozen():
         return Path(sys.executable).resolve().parent
@@ -52,13 +53,13 @@ def app_folder() -> Path:
 
 
 def data_folder() -> Path:
-    """Тека для бази, копій і журналів — поза синхронізованими теками.
+    """Folder for the database, copies and logs — outside synced folders.
 
-    Порядок визначення:
+    Resolution order:
 
-    1. `--data-dir ДИРЕКТОРІЯ` або змінна `PYTRAINER_DATA_DIR` — портативний
-       режим: усе в одній теці, яку можна носити з собою;
-    2. службова тека системи — типовий випадок.
+    1. `--data-dir DIRECTORY` or the `PYTRAINER_DATA_DIR` variable — portable
+       mode: everything in one folder you can carry around;
+    2. the system service folder — the typical case.
     """
     override = os.environ.get(DATA_ENV)
     if override:
@@ -71,16 +72,16 @@ def data_folder() -> Path:
 
 
 def database_path() -> Path:
-    """Файл бази з прогресом."""
+    """The progress database file."""
     return data_folder() / "pytrainer.db"
 
 
 def apply_data_dir(argv: list[str]) -> str | None:
-    """Враховує `--data-dir ДИРЕКТОРІЯ` з командного рядка.
+    """Applies `--data-dir DIRECTORY` from the command line.
 
-    Мусить викликатись **до** імпорту `trainer.core.db`: шлях до бази
-    обчислюється один раз при імпорті, тому змінити теку даних пізніше вже
-    неможливо.
+    Must be called **before** importing `trainer.core.db`: the db path is
+    computed once at import time, so changing the data folder later is
+    impossible.
     """
     if "--data-dir" in argv:
         index = argv.index("--data-dir")
@@ -91,7 +92,7 @@ def apply_data_dir(argv: list[str]) -> str | None:
 
 
 def resource(*parts: str) -> Path:
-    """Файл усередині застосунку (іконка, картинки)."""
+    """A file inside the app (icon, images)."""
     base = getattr(sys, "_MEIPASS", None)
     root = Path(base) if base else Path(__file__).resolve().parents[1]
     return root.joinpath(*parts)
@@ -99,13 +100,13 @@ def resource(*parts: str) -> Path:
 
 def atomic_write_text(path: str | Path, text: str,
                       encoding: str = "utf-8") -> Path:
-    """Пише текстовий файл атомарно: tmp поруч + `os.replace`.
+    """Writes a text file atomically: tmp nearby + `os.replace`.
 
-    Навіщо: `progress.json` і роадмап переписувались звичайним `write_text`
-    на кожен вердикт — обрив посеред запису (вимкнення, вбивство процесу)
-    лишав півфайлу. Тут читач бачить або старий файл цілком, або новий
-    цілком, третього не дано. `os.replace` атомарний і на Windows, і на
-    POSIX, якщо tmp лежить у тій самій теці.
+    Why: `progress.json` and the roadmap used to be rewritten with a plain
+    `write_text` on every verdict — an interruption mid-write (power loss,
+    killed process) left half a file. Here the reader sees either the whole
+    old file or the whole new one, nothing in between. `os.replace` is atomic
+    on both Windows and POSIX when tmp sits in the same folder.
     """
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -126,15 +127,15 @@ def atomic_write_text(path: str | Path, text: str,
 
 def migrate_data(folder: Path | None = None,
                  legacy: Path | None = None) -> list[str]:
-    """Переносить базу й копії з теки застосунку в теку даних. Один раз.
+    """Moves the database and copies from the app folder to the data folder. Once.
 
-    Повертає список того, що перенесено (порожній — якщо переносити нічого):
-    за цим списком `trainer/app.py` пише людині рядок у консоль, щоб переїзд
-    не виглядав як зникнення прогресу.
+    Returns the list of what was moved (empty — if there is nothing to move):
+    `trainer/app.py` prints that list as a console line so the move does not
+    look like vanished progress.
 
-    Порядок важливий: спершу **копіюємо**, потім перейменовуємо старе. Якщо
-    копіювання обірветься (немає місця, файл зайнятий), старий файл лишиться
-    на місці, і прогрес нікуди не дінеться.
+    Order matters: **copy** first, then rename the old. If copying breaks off
+    (no space, file busy), the old file stays put and the progress goes
+    nowhere.
     """
     target_folder = Path(folder) if folder else data_folder()
     legacy_folder = Path(legacy) if legacy else app_folder()
@@ -147,7 +148,7 @@ def migrate_data(folder: Path | None = None,
         if not target_db.exists():
             shutil.copy2(old_db, target_db)
             moved.append(old_db.name)
-        for suffix in ("-wal", "-shm"):     # сліди WAL, якщо були
+        for suffix in ("-wal", "-shm"):     # WAL traces, if any
             sidecar = Path(str(old_db) + suffix)
             if sidecar.exists():
                 try:
@@ -178,14 +179,14 @@ def migrate_data(folder: Path | None = None,
 
 
 def _retire(path: Path, reason: str) -> None:
-    """Перейменовує старий файл у `*.moved`, щоб не читався випадково.
+    """Renames the old file to `*.moved` so it is never read by accident.
 
-    Не вдалося — не біда: дані вже скопійовані, а зайвий файл лише займає
-    місце. Тому тут жодних винятків.
+    Failure is fine: the data is already copied, and a spare file only takes
+    space. Hence no exceptions here.
     """
     try:
         path.rename(path.with_name(path.name + ".moved"))
-    except OSError:                      # файл зайнятий або тека лише для читання
+    except OSError:                      # file busy or folder read-only
         pass
 
 

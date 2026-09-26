@@ -1,22 +1,22 @@
-"""Запуск застосунку PyTrainer.
+"""Launching the PyTrainer app.
 
-Звичайний запуск:
+Plain run:
     .venv\\Scripts\\python.exe main.py
-    .venv\\Scripts\\python.exe -m trainer          (те саме)
+    .venv\\Scripts\\python.exe -m trainer          (same)
 
-Демо-режим (не чіпає твій прогрес — працює на тимчасовій базі):
+Demo mode (leaves your progress alone — runs on a temp database):
     python main.py --demo
 
-Службові режими для розробки (щоб робити знімки для README):
+Service modes for development (to take README screenshots):
     ... --screenshot screenshots/main.png --demo
     ... --screenshot progress.png --view progress --demo
     ... --screenshot checks.png --task w2-list --solution --run-checks --demo
 
-Можна вказати тему й масштаб тексту прямо в командному рядку:
+Theme and text scale can be given right on the command line:
     python main.py --theme light
     python main.py --scale 1.2
 
-Портативний режим (дані в одній теці з .exe — на флешці чи в архіві):
+Portable mode (data in one folder with the .exe — on a flash drive or in an archive):
     python main.py --data-dir D:\\PyTrainer
 """
 
@@ -43,8 +43,8 @@ PySide6 не знайдено у поточному Python.
 
 from .core.exec_runner import ensure_streams  # noqa: E402
 
-# Іконка лежить усередині застосунку, тому беремо її через `resource()`:
-# у зібраному .exe це тека розпакування, а не корінь проєкту.
+# The icon ships inside the app, so take it via `resource()`:
+# in the built .exe that is the unpack folder, not the project root.
 from .paths import (  # noqa: E402
     apply_data_dir,
     data_folder,
@@ -58,21 +58,21 @@ VIEWS = {"roadmap": 0, "reviews": 1, "progress": 2, "plan": 3}
 
 
 class InstanceGuard:
-    """Не дає відкрити другу копію застосунку на тій самій базі.
+    """Keeps a second copy of the app from opening on the same database.
 
-    Два вікна на одній базі — це не лише плутанина на екрані: це паралельні
-    записи в SQLite, два різні «активні секунди» й дві черги повторень, які
-    перезаписують одна одну.
+    Two windows on one database is not just screen confusion: parallel writes
+    to SQLite, two different "active seconds" and two review queues overwriting
+    each other.
 
-    Чому саме `QLockFile`, а не іменований канал: `QLocalServer` на Windows
-    спокійно дозволяє кільком процесам слухати одне й те саме ім'я (це
-    перевірено), тому як замок він не працює. `QLockFile` робить рівно те,
-    що треба: атомарно створює файл-замок із номером процесу всередині, а якщо
-    програму вбили — замок уважається застарілим (Qt перевіряє, чи живий той
-    PID) і наступний запуск його прибирає.
+    Why `QLockFile` and not a named pipe: `QLocalServer` on Windows calmly
+    lets several processes listen on the same name (verified), so as a lock it
+    does not work. `QLockFile` does exactly what is needed: atomically creates
+    a lock file with the process number inside, and if the program was killed —
+    the lock counts as stale (Qt checks whether that PID is alive) and the next
+    launch removes it.
 
-    Замок лежить у теці даних, тому портативний режим (`--data-dir`) — це
-    окремий застосунок зі своїм замком, а не «вже запущено».
+    The lock lives in the data folder, so portable mode (`--data-dir`) is a
+    separate app with its own lock, not "already running".
     """
 
     def __init__(self, folder: str | Path) -> None:
@@ -82,7 +82,7 @@ class InstanceGuard:
         self.recovered = False
 
     def claim(self) -> bool:
-        """True — ми перші; False — працює інша копія (її PID — у `holder`)."""
+        """True — we are first; False — another copy runs (its PID is in `holder`)."""
         from PySide6.QtCore import QLockFile
 
         self.holder = ""
@@ -90,8 +90,8 @@ class InstanceGuard:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         lock = QLockFile(str(self.path))
         lock.setStaleLockTime(30_000)
-        # 200 мс — не очікування, а друга спроба: за цей час Qt устигає
-        # прибрати замок від процесу, який аварійно завершився.
+        # 200 ms is not a wait but a second try: Qt manages to remove
+        # a crashed process's lock within that time.
         if lock.tryLock(200):
             self.lock = lock
             return True
@@ -100,14 +100,14 @@ class InstanceGuard:
         pid = info[0] if info else 0
         name = info[2] if len(info) >= 3 else ""
         if not pid and lock.removeStaleLockFile() and lock.tryLock(200):
-            # Жива копія завжди пише у замок свій PID і номер завантаження
-            # системи, тому замок, з якого Qt не може прочитати нічого, — це
-            # не процес, а сміття: обірваний запис, зіпсований файл, чужий
-            # файл із такою назвою. Без цього кроку такий замок лишався б
-            # назавжди, і застосунок більше не відкрився б — із повідомленням
-            # «уже запущено» про нікого. Відібрати замок у живої копії при
-            # цьому не вийде: Windows не дає видалити відкритий файл, і тоді
-            # ми чемно поступаємось місцем, як і раніше.
+            # A live copy always writes its PID and boot number into the lock,
+            # so a lock Qt can read nothing from is not a process but garbage:
+            # a torn record, a corrupted file, someone else's file with that
+            # name. Without this step such a lock would stay forever, and the
+            # app would never open again — with an "already running" message
+            # about nobody. Taking the lock from a live copy still fails:
+            # Windows does not let you delete an open file, so we politely
+            # yield our place as before.
             self.lock = lock
             self.recovered = True
             return True
@@ -116,28 +116,28 @@ class InstanceGuard:
         return False
 
     def release(self) -> None:
-        """Відпускає замок — потрібно тестам і службовим запускам зі знімками."""
+        """Releases the lock — needed by tests and screenshot service runs."""
         if self.lock is not None:
             self.lock.unlock()
             self.lock = None
 
 
 def open_database(factory, target: Path) -> tuple[object, str]:
-    """Відкриває базу, а якщо файл побитий — відсуває його й починає нову.
+    """Opens the database, and if the file is broken — slides it aside and starts fresh.
 
-    Побитий файл не видаляємо: людина має мати можливість віддати його
-    комусь, щоб той спробував витягти дані. Поруч завжди лежить тиха копія
-    попереднього запуску, тому найгірший випадок — втрата одного запуску.
+    A broken file is never deleted: the human must be able to hand it to
+    someone to try data recovery. A quiet copy of the previous launch always
+    sits nearby, so the worst case is losing one launch.
 
-    Повертає пару (база, зауваження для людини); зауваження порожнє, якщо все
-    гаразд.
+    Returns a (database, note for the human) pair; the note is empty when all
+    is well.
     """
     try:
         database = factory(target)
     except sqlite3.DatabaseError as error:
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         broken = target.with_name(f"{target.name}.broken-{stamp}")
-        for suffix in ("", "-wal", "-shm"):          # сам файл і сліди WAL
+        for suffix in ("", "-wal", "-shm"):          # the file itself and WAL traces
             side = Path(str(target) + suffix)
             if side.exists():
                 try:
@@ -161,8 +161,8 @@ def open_database(factory, target: Path) -> tuple[object, str]:
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv if argv is None else argv)
 
-    # Найперше — тека даних: шлях до бази обчислюється під час імпорту
-    # `trainer.core.db`, тому `--data-dir` має бути врахований раніше.
+    # First — the data folder: the db path is computed at import time of
+    # `trainer.core.db`, so `--data-dir` must be applied earlier.
     apply_data_dir(argv)
 
     from .core.crashlog import version_line
@@ -171,9 +171,9 @@ def main(argv: list[str] | None = None) -> int:
         print(version_line())
         return 0
 
-    # У зібраному .exe PyInstaller приєднує вивід із кодуванням системи, і
-    # будь-яке «…» у ньому зриває друк у консольних режимах (`--demo`,
-    # `--screenshot`). Див. `core/exec_runner.ensure_streams`.
+    # In the built .exe PyInstaller attaches output with the system encoding,
+    # and any non-ASCII there breaks printing in console modes (`--demo`,
+    # `--screenshot`). See `core/exec_runner.ensure_streams`.
     ensure_streams()
 
     try:
@@ -193,8 +193,8 @@ def main(argv: list[str] | None = None) -> int:
     log_path = setup_crashlog()
     print(f"Журнал: {log_path}")
 
-    # Якщо застосунок уже створено (вбудований запуск, тести) — беремо його:
-    # другий QApplication у одному процесі Qt не дозволяє.
+    # If the app already exists (embedded launch, tests) — take it:
+    # Qt forbids a second QApplication in one process.
     app = QApplication.instance() or QApplication(argv)
     app.setApplicationName("PyTrainer")
     app.setApplicationDisplayName("PyTrainer")
@@ -208,10 +208,10 @@ def main(argv: list[str] | None = None) -> int:
     theme = argv[argv.index("--theme") + 1] if "--theme" in argv else None
     apply_theme(app, theme)
 
-    # Друга копія на тій самій базі — це два різні прогреси, які затирають
-    # один одного. Тому другий запуск лише каже, де шукати відкрите вікно, і
-    # виходить. Демо-режим виняток: він працює на тимчасовій базі й навмисно
-    # запускається багато разів підряд (тести, скрипт знімків).
+    # A second copy on the same database is two different progresses wiping
+    # each other. So the second launch only tells where the open window is
+    # and exits. Demo mode is the exception: it runs on a temp database and
+    # is deliberately launched many times in a row (tests, screenshot script).
     demo = "--demo" in argv
     guard = None if demo else InstanceGuard(data_folder())
     if guard is not None and not guard.claim():
@@ -238,10 +238,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Дані перенесено в {data_folder()}: {what}")
 
         database, note = open_database(Database, database_path())
-        backup_database()          # тиха копія перед роботою
+        backup_database()          # quiet copy before work
         window = MainWindow(db=database)
-        # Поки людина читає умову першої задачі, дитина вже розпаковується —
-        # інакше перший вердикт у .exe чекав би на це кілька секунд.
+        # While the human reads the first task, the child already unpacks —
+        # otherwise the first verdict in the .exe would wait seconds on it.
         warm_up_interpreter()
         if note:
             QMessageBox.warning(None, "База даних", note)
@@ -268,22 +268,22 @@ def main(argv: list[str] | None = None) -> int:
 
     code = app.exec()
 
-    # Демо-база тимчасова — прибираємо її після виходу. Інакше кожен запуск
-    # (а їх у тестах і в CI десятки) лишав би в %TEMP% теку pytrainer_demo_*,
-    # і через місяць там лежали б сотні копій однієї й тієї ж демо-бази.
-    # Видаляємо саме тут, а не в closeEvent: база вже закрита вікном, а якщо
-    # процес уб'ють силою — прибирати нічого не зламає.
+    # The demo database is temp — remove it on exit. Otherwise every launch
+    # (dozens in tests and CI) would leave a pytrainer_demo_* folder in %TEMP%,
+    # and in a month there would be hundreds of copies of the same demo base.
+    # Remove exactly here, not in closeEvent: the window already closed the db,
+    # and force-killing the process breaks no cleanup.
     if demo_folder is not None:
         shutil.rmtree(demo_folder, ignore_errors=True)
     return code
 
 
 def _demo_window(database) -> tuple["MainWindow", Path]:
-    """Вікно на тимчасовій базі з демонстраційним прогресом.
+    """Window on a temp database with demo progress.
 
-    Повертає ще й теку цієї бази — її прибирає `main()` після виходу.
-    Демо навмисно не чіпає ні теку даних, ні справжній `progress.json`:
-    його можна запускати скільки завгодно разів поспіль.
+    Also returns that base's folder — `main()` removes it on exit. Demo
+    deliberately touches neither the data folder nor the real `progress.json`:
+    it can be launched any number of times in a row.
     """
     from .core.demo import seed_database
     from .ui.main_window import MainWindow
@@ -296,6 +296,6 @@ def _demo_window(database) -> tuple["MainWindow", Path]:
         db=db,
         roadmap_path=folder / "Python-Roadmap.md",
         progress_path=folder / "progress.json",
-        settings_path=None,        # демо не має пам'ятати стан справжнього застосунку
+        settings_path=None,        # demo must not remember the real app's state
     )
     return window, folder

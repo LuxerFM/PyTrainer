@@ -1,10 +1,10 @@
-"""PyTrainer — тренажер Python. Дивись README.md.
+"""PyTrainer — Python trainer. See README.md.
 
-Запуск:  python main.py        (або: python -m trainer)
+Run:  python main.py        (or: python -m trainer)
 
-Службові режими (див. trainer/cli.py) — без вікна й без Qt:
-    python main.py --self-test [звіт.json]     перевірити, що код і тести працюють
-    python main.py --exec-runner файл.py       виконати чужий файл (так робить .exe)
+Service modes (see trainer/cli.py) — no window, no Qt:
+    python main.py --self-test [report.json]   check that code and tests work
+    python main.py --exec-runner file.py       run someone else's file (as .exe does)
 """
 
 from trainer.cli import main

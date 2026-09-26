@@ -1,16 +1,16 @@
-"""Вибір режиму запуску: вікно, виконання чужого коду, самоперевірка.
+"""Launch-mode picker: window, running someone else's code, self-test.
 
-Порядок тут не випадковий. Службові режими перевіряються **до** імпорту
-PySide6, і це не мікрооптимізація:
+The order here is deliberate. Service modes are checked **before** importing
+PySide6, and that is not a micro-optimisation:
 
-* `--exec-runner` виконує код користувача, тобто окремий запуск на кожну
-  перевірку. У зібраному `.exe` кожен такий запуск ще й розпаковує архів
-  PyInstaller-а, тому зайвий імпорт Qt додавав би до кожної перевірки
-  помітну частку секунди;
-* `--self-test` перевіряє саме ці запуски — і в CI, де Qt може бути взагалі
-  не потрібен, він не має тягнути за собою інтерфейс.
+* `--exec-runner` runs user code, i.e. a separate launch per check. In the
+  built `.exe` each such launch also unpacks the PyInstaller archive, so a
+  needless Qt import would add a noticeable fraction of a second to every
+  check;
+* `--self-test` checks exactly those launches — and in CI, where Qt may not
+  be needed at all, it must not drag the UI along.
 
-Звичайний запуск (без прапорців) іде у `trainer/app.py`.
+A plain launch (no flags) goes to `trainer/app.py`.
 """
 
 from __future__ import annotations
@@ -27,8 +27,8 @@ def main(argv: list[str] | None = None) -> int:
         print(version_line())
         return 0
 
-    # Найперше — тека даних: шлях до бази обчислюється під час імпорту
-    # `trainer.core.db`, тому `--data-dir` має бути врахований раніше.
+    # First — the data folder: the db path is computed at import time of
+    # `trainer.core.db`, so `--data-dir` must be applied earlier.
     from .paths import apply_data_dir
 
     apply_data_dir(argv)
