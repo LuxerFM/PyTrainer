@@ -147,16 +147,16 @@ Tasks are data, not UI code. Add one to the matching topic in `curriculum/`:
 ```python
 task(
     id="w2-average",
-    title="Середнє арифметичне",
-    level="Середньо",
-    statement="<p>Напиши <code>average(numbers)</code>…</p>",
+    title="Arithmetic mean",
+    level="Medium",
+    statement="<p>Write <code>average(numbers)</code>…</p>",
     starter="def average(numbers):\n    return 0\n",
     checks=[
-        code("рахує середнє", "assert average([2, 4]) == 3"),
-        code("порожній список", "assert average([]) is None"),
+        code("computes the mean", "assert average([2, 4]) == 3"),
+        code("empty list", "assert average([]) is None"),
     ],
     hints=[
-        hint("де шукати", "sum() і len() — твої друзі."),
+        hint("where to look", "sum() and len() are your friends."),
         solution("def average(numbers):\n    return sum(numbers) / len(numbers) if numbers else None"),
     ],
     # for a borrowed task — source and link to the original
@@ -167,7 +167,7 @@ task(
 )
 ```
 
-(Task titles and statements stay in Ukrainian — that is the product's language.)
+(Example translated for readability — real task titles and statements stay in Ukrainian, that is the product's language.)
 
 Then `python -m unittest discover -s tests` — the tests verify that your
 solution passes its own checks and the starter code does not.
