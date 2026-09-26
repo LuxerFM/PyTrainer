@@ -1,8 +1,8 @@
-"""Редактор коду.
+"""Code editor.
 
-Сам Qt не має готового «поля для коду», тому збираємо його з QPlainTextEdit:
-смуга з номерами рядків, підсвітка поточного рядка, автовідступ після `:`,
-Tab = 4 пробіли, Ctrl+Enter = запустити код.
+Qt itself has no ready "code field", so we assemble one from QPlainTextEdit:
+a line-number gutter, current-line highlight, auto-indent after `:`,
+Tab = 4 spaces, Ctrl+Enter = run code.
 """
 
 from PySide6.QtCore import QRect, QSize, Qt, Signal
@@ -16,7 +16,7 @@ INDENT = " " * 4
 
 
 class _LineNumberArea(QWidget):
-    """Смуга зліва від коду, де домальовуються номери рядків."""
+    """Gutter left of the code, where line numbers are drawn."""
 
     def __init__(self, editor: "CodeEditor") -> None:
         super().__init__(editor)
@@ -30,7 +30,7 @@ class _LineNumberArea(QWidget):
 
 
 class CodeEditor(QPlainTextEdit):
-    """Поле для коду з усіма зручностями."""
+    """Code field with all the comforts."""
 
     run_requested = Signal()
 
@@ -54,22 +54,22 @@ class CodeEditor(QPlainTextEdit):
         self._highlight_current_line()
 
     def apply_theme(self) -> None:
-        """Перечитує шрифт і кольори підсвітки.
+        """Rereads the font and highlight colours.
 
-        Потрібно після зміни теми або масштабу: кольори синтаксису зберігає
-        не QSS, а сам підсвічувач, тому його треба створити заново.
+        Needed after a theme or scale change: syntax colours are kept not by
+        QSS but by the highlighter itself, so it must be recreated.
         """
         font = pick_font(MONO_FONTS, ui_size(11))
         self.setFont(font)
         self.setTabStopDistance(QFontMetricsF(font).horizontalAdvance(" ") * 4)
 
-        self._highlighter.setDocument(None)      # відв'язуємо старий
+        self._highlighter.setDocument(None)      # unbind the old one
         self._highlighter = PythonHighlighter(self.document())
         self._highlighter.rehighlight()
         self._refresh_gutter_width()
         self._highlight_current_line()
 
-    # ---------- смуга з номерами ----------
+    # ---------- number gutter ----------
 
     def gutter_width(self) -> int:
         digits = max(3, len(str(max(1, self.blockCount()))))
@@ -123,7 +123,7 @@ class CodeEditor(QPlainTextEdit):
             number += 1
         painter.end()
 
-    # ---------- підсвітка поточного рядка ----------
+    # ---------- current-line highlight ----------
 
     def _highlight_current_line(self) -> None:
         selection = QTextEdit.ExtraSelection()
@@ -133,13 +133,13 @@ class CodeEditor(QPlainTextEdit):
         selection.cursor.clearSelection()
         self.setExtraSelections([selection])
 
-    # ---------- клавіші ----------
+    # ---------- keys ----------
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
         key = event.key()
         modifiers = event.modifiers()
 
-        # Ctrl+Enter (на macOS — Cmd+Enter) = запустити
+        # Ctrl+Enter (on macOS — Cmd+Enter) = run
         if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and modifiers in (
             Qt.KeyboardModifier.ControlModifier,
             Qt.KeyboardModifier.MetaModifier,
@@ -158,7 +158,7 @@ class CodeEditor(QPlainTextEdit):
             return
         super().keyPressEvent(event)
 
-    # ---------- відступи ----------
+    # ---------- indents ----------
 
     def _selected_lines(self) -> tuple[int, int]:
         cursor = self.textCursor()
@@ -170,7 +170,7 @@ class CodeEditor(QPlainTextEdit):
         return start, end
 
     def _indent_selection(self) -> None:
-        """Tab: додає відступ (одному рядку — просто 4 пробіли)."""
+        """Tab: adds indent (one line — just 4 spaces)."""
         cursor = self.textCursor()
         if not cursor.hasSelection():
             cursor.insertText(INDENT)
@@ -201,14 +201,14 @@ class CodeEditor(QPlainTextEdit):
                 edit.setPosition(block.position())
                 edit.movePosition(edit.MoveOperation.Right, edit.MoveMode.KeepAnchor, cut)
                 edit.removeSelectedText()
-            elif block.text().strip():  # порожні рядки не чіпаємо
+            elif block.text().strip():  # leave empty lines alone
                 edit = self.textCursor()
                 edit.setPosition(block.position())
                 edit.insertText(indent)
         cursor.endEditBlock()
 
     def _smart_newline(self) -> None:
-        """Enter: зберігає відступ і сам додає 4 пробіли після `:`."""
+        """Enter: keeps the indent and adds 4 spaces after `:` itself."""
         cursor = self.textCursor()
         line = cursor.block().text()[: cursor.positionInBlock()]
         indent = line[: len(line) - len(line.lstrip(" \t"))]
