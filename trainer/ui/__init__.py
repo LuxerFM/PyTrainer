@@ -1,1 +1,1 @@
-"""Інтерфейс застосунку: вікно, тема, редактор, панелі."""
+"""App interface: window, theme, editor, panels."""

@@ -1,22 +1,27 @@
-"""Права панель: умова задачі, перевірки, довідка, підказки та історія.
+"""Right panel: task statement, checks, reference, hints and history.
 
-Тут живе «інформаційний шар» тренажера — усе, що людина має бачити поруч із
-редактором:
+The trainer's "information layer" lives here — everything the human must see
+next to the editor:
 
-* **Задача** — умова гарним текстом (окремий шрифт для прози й для коду);
-* **Тести** — що саме перевірять *до* запуску і що з цього вийшло *після*,
-  плюс людське пояснення помилки замість англійського traceback;
-* **Рев'ю** — розбір самого коду: що в ньому не так і як зробити краще;
-* **Довідка** — міні-шпаргалка, підібрана під тему задачі;
-* **Підказки** — підказки за таймером активної роботи (ШІ як вчитель, а не автор);
-* **Історія** — усі запуски й здавання цієї задачі.
+* **Задача** ("Task") — the statement in handsome text (separate fonts for
+  prose and code);
+* **Тести** ("Tests") — what exactly will be checked *before* the run and
+  what came out *after*, plus a human error explanation instead of an
+  English traceback;
+* **Рев'ю** ("Review") — the code itself reviewed: what is wrong and how to
+  make it better;
+* **Довідка** ("Reference") — a mini-cheatsheet matched to the task topic;
+* **Підказки** ("Hints") — hints on an active-work timer (AI as teacher, not
+  author);
+* **Історія** ("History") — all runs and passes of this task.
 
-Розв'язок заблоковано, поки не набіжить достатньо часу активної роботи над
-задачею. Це прямо реалізує правило з роадмапу: ШІ — вчитель, а не автор коду.
+The solution is locked until enough active-work time on the task accrues.
+That directly implements the roadmap rule: AI is the teacher, not the code
+author.
 
-Окремий випадок — холодне повторення (вже здана задача): там підказки й
-розв'язок недоступні зовсім, бо вся вправа в тому, щоб дістати рішення
-з пам'яті, а не впізнати власний код.
+A special case is cold review (an already-passed task): hints and solution
+are unavailable entirely, since the whole exercise is pulling the solution
+from memory rather than recognising your own code.
 """
 
 from __future__ import annotations
@@ -24,7 +29,7 @@ from __future__ import annotations
 import html
 import re
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QCoreApplication, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -51,7 +56,7 @@ from .review_view import ReviewView
 from .test_results import TestResults
 from .theme import Colors, mono_family, prose_family, ui_size
 
-# Індекси вкладок — щоб жодне число не «загубилось» у коді вікна.
+# Tab indices — so no bare number gets "lost" in the window code.
 TAB_STATEMENT = 0
 TAB_TESTS = 1
 TAB_REVIEW = 2
@@ -66,8 +71,8 @@ def _format_time(seconds: float) -> str:
 
 
 # --------------------------------------------------------------------------
-# Текст підказок приходить звичайним текстом, а показати його треба гарно:
-# проза — звичайним шрифтом, а рядки-код — моноширинним у рамці.
+# Hint text arrives as plain text, but must be shown handsomely:
+# prose in the plain font, code lines in monospace inside a frame.
 # --------------------------------------------------------------------------
 
 _CODE_START = (
@@ -79,7 +84,7 @@ _ASSIGN_RE = re.compile(r"^[A-Za-z_][\w\.\[\]'\"]*\s*[-+*/]?=[^=]")
 
 
 def _looks_like_code(line: str) -> bool:
-    """Евристика: рядок схожий на код, а не на речення українською."""
+    """Heuristic: the line looks like code, not a Ukrainian sentence."""
     stripped = line.strip()
     if not stripped:
         return False
@@ -89,11 +94,12 @@ def _looks_like_code(line: str) -> bool:
 
 
 def plain_to_html(text: str) -> str:
-    """Перетворює звичайний текст у HTML, виділяючи блоки коду.
+    """Turns plain text into HTML, pulling code blocks out.
 
-    Підказки пише людина (я) простим текстом — і саме так їх легко правити.
-    А показувати треба так, щоб код не зливався з поясненням. Тому сусідні
-    рядки-код збираються в один `<pre>`, а решта стає абзацами.
+    Hints are written by a human (me) as plain text — and that is exactly
+    how they are easy to edit. But they must be shown so code never melts
+    into explanation. So neighbouring code lines gather into one `<pre>`,
+    and the rest becomes paragraphs.
     """
     blocks: list[str] = []
     code: list[str] = []
@@ -116,13 +122,13 @@ def plain_to_html(text: str) -> str:
 
 
 class AutoHeightText(QTextBrowser):
-    """QTextBrowser, який сам підганяє висоту під свій вміст.
+    """A QTextBrowser that fits its height to its content.
 
-    Потрібен там, де блок має бути «як картка»: показує весь текст, не
-    додаючи власної прокрутки всередині прокрутки.
+    Needed where a block must be "card-like": shows all text without adding
+    its own scroll inside a scroll.
     """
 
-    _fitting = False   # атрибут рівня класу: resizeEvent може прийти раніше за __init__
+    _fitting = False   # class-level attribute: resizeEvent may arrive before __init__
 
     def __init__(self, html_text: str = "", parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -135,11 +141,11 @@ class AutoHeightText(QTextBrowser):
         if html_text:
             self.setHtml(html_text)
 
-    def setHtml(self, text: str) -> None:  # noqa: N802 — назва з Qt
+    def setHtml(self, text: str) -> None:  # noqa: N802 — Qt-given name
         super().setHtml(text)
         self._fit()
 
-    def resizeEvent(self, event) -> None:  # noqa: N802 — назва з Qt
+    def resizeEvent(self, event) -> None:  # noqa: N802 — Qt-given name
         super().resizeEvent(event)
         self._fit()
 
@@ -158,13 +164,13 @@ class AutoHeightText(QTextBrowser):
 
 
 class TaskPanel(QWidget):
-    """Показує умову, результати перевірки, довідку, підказки та історію."""
+    """Shows the statement, check results, reference, hints and history."""
 
-    hint_revealed = Signal(int, bool)       # (рівень підказки, чи це повний розв'язок)
-    solution_use_requested = Signal(str)    # людина хоче вставити розв'язок у редактор
-    manual_toggle_requested = Signal(str)   # пункт, зроблений поза тренажером
-    jump_to_line_requested = Signal(int)    # поставити курсор на рядок з помилкою
-    review_requested = Signal()             # «розбери мій код» (вкладка «Рев'ю»)
+    hint_revealed = Signal(int, bool)       # (hint level, whether a full solution)
+    solution_use_requested = Signal(str)    # human wants the solution in the editor
+    manual_toggle_requested = Signal(str)   # item done outside the trainer
+    jump_to_line_requested = Signal(int)    # put the cursor on the error line
+    review_requested = Signal()             # "review my code" (the "Рев'ю" tab)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -184,12 +190,12 @@ class TaskPanel(QWidget):
         layout.addWidget(self._build_header())
 
         self.tabs = QTabWidget()
-        self.tabs.addTab(self._build_statement_tab(), "Задача")
-        self.tabs.addTab(self._build_tests_tab(), "Тести")
-        self.tabs.addTab(self._build_review_tab(), "Рев'ю")
-        self.tabs.addTab(self._build_cheatsheet_tab(), "Довідка")
-        self.tabs.addTab(self._build_hints_tab(), "Підказки")
-        self.tabs.addTab(self._build_history_tab(), "Історія")
+        self.tabs.addTab(self._build_statement_tab(), self.tr("Задача"))
+        self.tabs.addTab(self._build_tests_tab(), self.tr("Тести"))
+        self.tabs.addTab(self._build_review_tab(), self.tr("Рев'ю"))
+        self.tabs.addTab(self._build_cheatsheet_tab(), self.tr("Довідка"))
+        self.tabs.addTab(self._build_hints_tab(), self.tr("Підказки"))
+        self.tabs.addTab(self._build_history_tab(), self.tr("Історія"))
         layout.addWidget(self.tabs, 1)
 
         self.results = TestResults(self)
@@ -197,7 +203,7 @@ class TaskPanel(QWidget):
         self.hints_view = HintsView(self)
         self.history_view = HistoryView(self)
 
-    # ---------- верхівка ----------
+    # ---------- header ----------
 
     def _build_header(self) -> QWidget:
         header = QWidget()
@@ -206,7 +212,7 @@ class TaskPanel(QWidget):
         box.setContentsMargins(16, 12, 16, 12)
         box.setSpacing(7)
 
-        self.title = QLabel("Задача")
+        self.title = QLabel(self.tr("Задача"))
         self.title.setObjectName("TaskTitle")
         self.title.setWordWrap(True)
         box.addWidget(self.title)
@@ -217,7 +223,7 @@ class TaskPanel(QWidget):
         self.level_badge.setObjectName("Badge")
         self.topic_label = QLabel("")
         self.topic_label.setObjectName("Subtle")
-        self.topic_label.setWordWrap(True)   # довга тема має переноситись, а не різатись
+        self.topic_label.setWordWrap(True)   # a long topic must wrap, not clip
         row.addWidget(self.level_badge)
         row.addWidget(self.topic_label, 1)
         box.addLayout(row)
@@ -233,7 +239,7 @@ class TaskPanel(QWidget):
         box.addWidget(self.xp_label)
         return header
 
-    # ---------- вкладки ----------
+    # ---------- tabs ----------
 
     def _build_statement_tab(self) -> QWidget:
         self.statement = QTextBrowser()
@@ -248,7 +254,7 @@ class TaskPanel(QWidget):
         box.setContentsMargins(14, 12, 14, 12)
         box.setSpacing(9)
 
-        self.tests_summary = QLabel("Ще не перевірялося")
+        self.tests_summary = QLabel(self.tr("Ще не перевірялося"))
         self.tests_summary.setObjectName("VerdictWarn")
         self.tests_summary.setWordWrap(True)
         box.addWidget(self.tests_summary)
@@ -284,12 +290,12 @@ class TaskPanel(QWidget):
         self.review_summary.setWordWrap(True)
         box.addWidget(self.review_summary)
 
-        self.review_button = QPushButton("Розібрати код")
+        self.review_button = QPushButton(self.tr("Розібрати код"))
         self.review_button.setObjectName("Ghost")
         self.review_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.review_button.setToolTip(
-            "Розбір не оцінює і не перевіряє: він каже, що в коді буде важко "
-            "читати іншій людині — і як це виправити (F6)"
+            self.tr("Розбір не оцінює і не перевіряє: він каже, що в коді буде важко "
+                    "читати іншій людині — і як це виправити (F6)")
         )
         self.review_button.clicked.connect(
             lambda _=False: self.review_requested.emit()
@@ -320,8 +326,8 @@ class TaskPanel(QWidget):
         box.setSpacing(9)
 
         self.sheet_note = QLabel(
-            "Міні-довідка з теми задачі. Можна вибрати будь-яку іншу — "
-            "це не впливає на XP."
+            self.tr("Міні-довідка з теми задачі. Можна вибрати будь-яку іншу — "
+                    "це не впливає на XP.")
         )
         self.sheet_note.setObjectName("CheckDetail")
         self.sheet_note.setWordWrap(True)
@@ -346,11 +352,11 @@ class TaskPanel(QWidget):
         outer.setContentsMargins(14, 12, 14, 0)
         outer.setSpacing(8)
 
-        # Пояснення холодного повторення живе поза списком підказок: список
-        # перебудовується на кожну задачу, а цей напис має лишатись на місці.
+        # The cold-review note lives outside the hint list: the list is
+        # rebuilt per task, while this caption must stay put.
         self.cold_note = QLabel(
-            "Холодне повторення: підказки й розв'язок недоступні, доки не "
-            "завершиш спробу. Саме в цьому суть — згадати самому."
+            self.tr("Холодне повторення: підказки й розв'язок недоступні, доки не "
+                    "завершиш спробу. Саме в цьому суть — згадати самому.")
         )
         self.cold_note.setObjectName("Warn")
         self.cold_note.setWordWrap(True)
@@ -374,7 +380,7 @@ class TaskPanel(QWidget):
         box.setContentsMargins(14, 12, 14, 12)
         box.setSpacing(8)
 
-        self.history_summary = QLabel("Історії ще немає")
+        self.history_summary = QLabel(self.tr("Історії ще немає"))
         self.history_summary.setWordWrap(True)
         self.history_summary.setObjectName("CheckDetail")
         box.addWidget(self.history_summary)
@@ -415,22 +421,22 @@ class TaskPanel(QWidget):
 
     def show_placeholder(self, title: str, message: str, *,
                          task_id: str | None = None, manual_done: bool = False) -> None:
-        """Пункт плану, який робиться поза тренажером (venv, Git, pytest)."""
+        """A plan item done outside the trainer (venv, Git, pytest)."""
         self._task = None
         self.set_locked(False)
         self._hint_widgets.clear()
         self.title.setText(title)
-        self.level_badge.setText("Виконано поза тренажером" if manual_done else "План")
+        self.level_badge.setText(self.tr("Виконано поза тренажером") if manual_done else self.tr("План"))
         self.topic_label.setText("")
         self.meta_label.setText("")
         self.xp_label.setText(
-            "Цей пункт не перевіряється тестами: зроби його у своєму терміналі "
-            "й познач галочкою." if task_id else ""
+            self.tr("Цей пункт не перевіряється тестами: зроби його у своєму терміналі "
+                    "й познач галочкою.") if task_id else ""
         )
         self.statement.setHtml(self._wrap_html(f"<p>{html.escape(message)}</p>"))
         self.show_planned_checks(None)
         self._select_sheet(cheatsheets.pick_text(title))
-        self.history_summary.setText("Історії ще немає")
+        self.history_summary.setText(self.tr("Історії ще немає"))
         self.history_list.clear()
         self._clear_hints()
 
@@ -441,11 +447,11 @@ class TaskPanel(QWidget):
 
     @staticmethod
     def _drop_widget(widget: QWidget) -> None:
-        """Прибирає віджет негайно.
+        """Removes the widget immediately.
 
-        Сам deleteLater() лише ставить його в чергу: до наступного кола циклу
-        подій старий блок лишався б намальованим поверх нового. Тому спершу
-        відв'язуємо від батька, і аж потім знищуємо.
+        deleteLater() alone only queues it: until the next event-loop round
+        the old block would stay painted over the new one. So first unparent,
+        and only then destroy.
         """
         widget.setParent(None)
         widget.deleteLater()
@@ -465,24 +471,24 @@ class TaskPanel(QWidget):
 
     @property
     def locked(self) -> bool:
-        """Чи це холодне повторення (підказки й розв'язок вимкнено)."""
+        """Whether this is a cold review (hints and solution off)."""
         return self.hints_view.locked
 
     def set_locked(self, locked: bool) -> None:
-        """Вмикає/вимикає холодне повторення в панелі підказок."""
+        """Switches cold review on/off in the hints panel."""
         self.hints_view.set_locked(locked)
 
     def update_xp_preview(self, xp: int, hints_used: int) -> None:
-        """Показує, скільки XP дасть задача з урахуванням відкритих підказок."""
+        """Shows how much XP the task grants given the opened hints."""
         self.hints_view.update_xp_preview(xp, hints_used)
 
     def tick(self, active_seconds: float) -> None:
-        """Оновлює лічильник активної роботи (викликає таймер головного вікна)."""
+        """Refreshes the active-work counter (called by the main-window timer)."""
         self.hints_view.tick(active_seconds)
 
-    # ---------- перевірки ----------
+    # ---------- checks ----------
 
-    # ---------- вкладка «Тести» (м'ясо — в ui/test_results.py) ----------
+    # ---------- the "Тести" tab (meat lives in ui/test_results.py) ----------
 
     def _clear_checks(self) -> None:
         self.results.clear_checks()
@@ -491,7 +497,7 @@ class TaskPanel(QWidget):
         self.results.add_card(widget, box)
 
     def _check_card(self, **kwargs) -> QFrame:
-        """Одна картка: значок стану, назва перевірки й пояснення."""
+        """One card: state icon, check name and explanation."""
         return self.results.check_card(**kwargs)
 
     @staticmethod
@@ -499,7 +505,7 @@ class TaskPanel(QWidget):
         return TestResults.check_kind(check)
 
     def show_planned_checks(self, task: Task | None) -> None:
-        """Показує список перевірок **до** запуску: що саме вимагатимуть."""
+        """Shows the check list **before** the run: what exactly they will demand."""
         self.results.show_planned_checks(task)
 
     def reset_tests(self) -> None:
@@ -509,31 +515,31 @@ class TaskPanel(QWidget):
         self.results.show_result(result, with_checks)
 
     def _show_advice(self, result: RunResult, passed: int, total: int) -> None:
-        """Пояснює помилку людською мовою й підказує наступний крок."""
+        """Explains the error in human language and hints the next step."""
         self.results.show_advice(result, passed, total)
 
     def _add_jump_button(self, result: RunResult) -> None:
-        """Кнопка «перейти до рядка N» — найшвидший шлях від помилки до коду."""
+        """A "jump to line N" button — the fastest path from error to code."""
         self.results.add_jump_button(result)
 
     @property
     def jump_line(self) -> int:
-        """Рядок, на який можна перейти після останнього прогону (0 — немає)."""
+        """Line jumpable to after the last run (0 — none)."""
         return self.results.jump_line
 
-    # ---------- розбір коду ----------
+    # ---------- code review ----------
 
     def show_review(self, review: CodeReview) -> None:
-        """Показує розбір коду: зауваження з номерами рядків і одну похвалу."""
+        """Shows the code review: remarks with line numbers and one praise."""
         self.review_view.show_review(review)
 
     def reset_review(self) -> None:
-        """Забуває попередній розбір: для нової задачі він був би брехнею."""
+        """Forgets the previous review: for a new task it would be a lie."""
         self.review_view.reset_review()
 
     @property
     def review_cards(self) -> list[QFrame]:
-        """Картки розбору — щоб тести могли їх порахувати."""
+        """Review cards — so tests can count them."""
         return self.review_view.review_cards
 
     def _clear_review(self) -> None:
@@ -543,13 +549,13 @@ class TaskPanel(QWidget):
         return self.review_view.review_card(remark)
 
     def _line_button(self, line: int) -> QWidget | None:
-        """Кнопка «перейти до рядка» — з зауваження одразу в код."""
+        """A "jump to line" button — from the remark straight into code."""
         return self.review_view.line_button(line)
 
-    # ---------- довідка ----------
+    # ---------- reference ----------
 
     def _select_sheet(self, sheet: cheatsheets.CheatSheet) -> None:
-        """Показує потрібну шпаргалку, не смикаючи вибір людини без причини."""
+        """Shows the right cheatsheet without yanking the human's choice."""
         index = self._sheets.index(sheet) if sheet in self._sheets else 0
         if self.sheet_picker.currentIndex() != index:
             self.sheet_picker.blockSignals(True)
@@ -561,12 +567,12 @@ class TaskPanel(QWidget):
         if not (0 <= index < len(self._sheets)):
             return
         sheet = self._sheets[index]
-        # compact: у вузькій панелі зайвий розмір шрифту = зайві переноси рядків
+        # compact: in a narrow panel spare font size = spare line wraps
         self.sheet_view.setHtml(
             self._wrap_html(plain_to_html(sheet.body), compact=True)
         )
 
-    # ---------- підказки ----------
+    # ---------- hints ----------
 
     def _build_hints(self, task: Task, hints_used: int) -> None:
         self.hints_view.build_hints(task, hints_used)
@@ -578,36 +584,37 @@ class TaskPanel(QWidget):
         self.hints_view.refresh_lock_state()
 
     def _lock_everything(self) -> None:
-        """Холодне повторення: жодна підказка не відкривається, розв'язок теж."""
+        """Cold review: no hint opens, neither does the solution."""
         self.hints_view.lock_everything()
 
     def _refresh_xp(self, xp_preview: int | None, hints_used: int) -> None:
         self.hints_view.refresh_xp(xp_preview, hints_used)
 
-    # ---------- службове ----------
+    # ---------- service ----------
 
     @staticmethod
     def _repolish(widget: QWidget) -> None:
-        """Після зміни objectName Qt сам стиль не перемальовує — просимо явно."""
+        """After an objectName change Qt never repaints the style itself — ask explicitly."""
         widget.style().unpolish(widget)
         widget.style().polish(widget)
         widget.update()
 
     @staticmethod
     def _meta_text(task: Task, position: tuple[int, int] | None) -> str:
+        tr = lambda s: QCoreApplication.translate("TaskPanel", s)
         parts = []
         if position:
-            parts.append(f"Задача {position[0]} із {position[1]}")
-        parts.append(f"≈{task.minutes} хв роботи")
+            parts.append(tr("Задача {a} із {b}").format(a=position[0], b=position[1]))
+        parts.append(tr("≈{n} хв роботи").format(n=task.minutes))
         if task.has_files:
-            parts.append("проєкт із кількох файлів")
+            parts.append(tr("проєкт із кількох файлів"))
         if task.stdin:
-            parts.append("є ввід")
+            parts.append(tr("є ввід"))
         return " · ".join(parts)
 
     @staticmethod
     def _with_source(task: Task) -> str:
-        """Дописує в кінець умови, звідки задача (повага до авторів)."""
+        """Appends where the task comes from (respect to the authors)."""
         if not task.has_source:
             return task.statement
         credit = html.escape(task.source)
@@ -619,18 +626,20 @@ class TaskPanel(QWidget):
         return (
             task.statement
             + f'<p style="color: {Colors.muted}; font-size: {ui_size(11)}px;">'
-              f"Джерело задачі: {credit}. Умова переказана українською, "
-              "перевірки — власні.</p>"
+              + QCoreApplication.translate(
+                  "TaskPanel",
+                  "Джерело задачі: {credit}. Умова переказана українською, "
+                  "перевірки — власні.").format(credit=credit) + "</p>"
         )
 
     def _wrap_html(self, body: str, *, compact: bool = False) -> str:
-        """Спільний «аркуш стилів» для умов, підказок і довідки.
+        """Shared "stylesheet" for statements, hints and reference.
 
-        Проза й код — різними шрифтами: око має з першого погляду відрізняти
-        пояснення від того, що треба набрати в редакторі.
+        Prose and code in different fonts: the eye must tell explanation
+        from what to type into the editor at first glance.
 
-        compact=True — трохи дрібніший текст: він потрібен довідці, де в
-        вузьку панель має влізти якомога більше коду без переносів.
+        compact=True — slightly smaller text: the reference needs it, where
+        as much code as possible must fit the narrow panel without wraps.
         """
         prose = prose_family()
         mono = mono_family()
@@ -639,8 +648,8 @@ class TaskPanel(QWidget):
         pad = "8px 10px" if compact else "10px 12px"
         return f"""
         <style>
-            /* line-height у Qt задається у відсотках: 120% від 14px дає ~21px
-               на рядок — це комфортні 1.5, більше вже виглядає розріджено */
+            /* line-height in Qt is percent-based: 120% of 14px gives ~21px
+               per line — a comfortable 1.5, more already looks sparse */
             body {{ color: {Colors.text}; font-family: '{prose}';
                     font-size: {prose_px}px; line-height: 120%; }}
             p {{ margin: 8px 0; }}
@@ -654,7 +663,7 @@ class TaskPanel(QWidget):
             code {{ font-family: '{mono}'; font-size: {code_px}px;
                     background-color: {Colors.editor_bg};
                     color: {Colors.syn_string}; padding: 1px 5px; }}
-            /* у коді рядки стоять щільніше, ніж у прозі — як у редакторі */
+            /* code lines sit denser than prose — like in the editor */
             pre {{ font-family: '{mono}'; font-size: {code_px}px;
                    background-color: {Colors.editor_bg}; color: {Colors.text};
                    padding: {pad}; border: 1px solid {Colors.border};
