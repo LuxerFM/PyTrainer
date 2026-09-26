@@ -267,5 +267,77 @@ class ProcessCleanupTests(unittest.TestCase):
         self.assertEqual(after - before, set(), "тимчасова тека пережила таймаут")
 
 
+class ParallelRunTests(unittest.TestCase):
+    """Швидкість вердикту: перевірки виводу йдуть одночасно, а не по черзі.
+
+    Кожна перевірка виводу — це окремий запуск програми, і в зібраному .exe
+    кожен запуск ще й розпаковує архів PyInstaller (~1.2 с). Послідовно чотири
+    перевірки означали б чотири таких старти на кожне F5.
+    """
+
+    def test_runs_really_overlap(self):
+        """Бар'єр — доказ одночасності без вимірювання часу.
+
+        Якщо запуски йдуть по черзі, бар'єр ніколи не збереться і впаде за
+        таймаутом — жодні «повільні CI» цього не зламають.
+        """
+        import threading
+
+        barrier = threading.Barrier(3, timeout=10)
+        order: list[int] = []
+
+        def worker(index: int) -> int:
+            order.append(index)
+            barrier.wait()
+            return index * 10
+
+        self.assertEqual(runner._run_in_parallel(worker, [0, 1, 2]), [0, 10, 20])
+        self.assertEqual(sorted(order), [0, 1, 2])
+
+    def test_results_stay_in_the_task_order(self):
+        """Порядок результатів — як у задачі, хоч би як швидко вони бігли."""
+        result = run_code(
+            'name = input()\nprint(f"привіт, {name}")\n',
+            [stdout("Аня", contains="привіт, Аня", stdin="Аня"),
+             stdout("Боря", contains="привіт, Боря", stdin="Боря"),
+             stdout("Віта", contains="привіт, Віта", stdin="Віта")],
+        )
+        self.assertEqual([check.name for check in result.checks],
+                         ["Аня", "Боря", "Віта"])
+        self.assertTrue(result.all_passed, result.first_error)
+
+    def test_a_single_check_is_not_spawned_twice(self):
+        calls: list[str] = []
+
+        def worker(item: str) -> str:
+            calls.append(item)
+            return item.upper()
+
+        self.assertEqual(runner._run_in_parallel(worker, ["один"]), ["ОДИН"])
+        self.assertEqual(runner._run_in_parallel(worker, []), [])
+        self.assertEqual(calls, ["один"])
+
+
+class WarmUpTests(unittest.TestCase):
+    """Прогрів дитини: перше F5 не має чекати на розпакування архіву."""
+
+    def test_warmup_finishes_and_leaves_nothing_behind(self):
+        before = set(Path(tempfile.gettempdir()).glob("pytrainer_*"))
+        thread = runner.warm_up_interpreter()
+        thread.join(timeout=90)
+
+        self.assertFalse(thread.is_alive(), "прогрів не завершився")
+        after = set(Path(tempfile.gettempdir()).glob("pytrainer_*"))
+        self.assertEqual(after - before, set(), "прогрів лишив тимчасову теку")
+
+    def test_warmup_swallows_a_broken_interpreter(self):
+        """Немає чим прогріти — це не привід валити застосунок."""
+        with mock.patch.object(runner, "_run_process",
+                               side_effect=OSError("немає інтерпретатора")):
+            thread = runner.warm_up_interpreter()
+            thread.join(timeout=10)
+        self.assertFalse(thread.is_alive())
+
+
 if __name__ == "__main__":
     unittest.main()

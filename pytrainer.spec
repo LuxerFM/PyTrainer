@@ -5,9 +5,11 @@
 
     .venv\\Scripts\\python.exe tools\\build_exe.py
 
-Результат — `dist/PyTrainer.exe`. База з прогресом, роадмап і налаштування
-створюються **поруч із .exe** (див. `trainer/paths.py`), бо `--onefile`
-розпаковує код у тимчасову теку, яку прибирає після виходу.
+Результат — `dist/PyTrainer.exe`. База з прогресом і копії лежать у службовій
+теці системи (`%LOCALAPPDATA%\PyTrainer`), а `progress.json`, `Python-Roadmap.md`
+і `pytrainer.ini` — поруч із .exe: `--onefile` розпаковує код у тимчасову теку,
+яку прибирає після виходу, а SQLite у синхронізованій теці (OneDrive) псується
+(див. `trainer/paths.py`).
 """
 
 from pathlib import Path

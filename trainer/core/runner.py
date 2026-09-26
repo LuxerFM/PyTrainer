@@ -34,7 +34,9 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from curriculum.schema import Check
@@ -46,6 +48,13 @@ MARKER = "__PYTRAINER_RESULTS__"
 DEFAULT_TIMEOUT = 5.0
 MAX_OUTPUT_BYTES = 64 * 1024
 DEFAULT_ENTRYPOINT = "solution.py"
+
+# Скільки перевірок виводу запускати одночасно. Обмеження не про процесор, а
+# про очікування: поки одна дитина стартує (у зібраному .exe — це розпакування
+# архіву PyInstaller), інші вже працюють. Більше чотирьох одночасних
+# розпакувань по 40 МБ тільки заважали б одне одному.
+MAX_PARALLEL_RUNS = 3
+WARMUP_TIMEOUT = 30.0
 
 HARNESS = '''
 
@@ -307,6 +316,49 @@ def _remove_dir(path: str, attempts: int = 6) -> bool:
     return False
 
 
+def _run_in_parallel(worker, items: list) -> list:
+    """Виконує однотипні запуски паралельно, зберігаючи порядок результатів.
+
+    Послідовно N перевірок виводу коштують N стартів дитини: з коду це
+    ~0.1 с кожна, а в зібраному .exe — ~1.2 с, бо кожен запуск розпаковує
+    архів PyInstaller. Людина чекає на ці секунди після кожного F5, тому
+    запуски йдуть одночасно, а порядок результатів лишається тим самим —
+    інакше картки перевірок переплуталися б.
+    """
+    if not items:
+        return []
+    if len(items) == 1:
+        return [worker(items[0])]
+
+    workers = min(MAX_PARALLEL_RUNS, len(items))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(worker, item) for item in items]
+        return [future.result() for future in futures]
+
+
+def warm_up_interpreter() -> threading.Thread:
+    """Заздалегідь запускає дитину, щоб перший вердикт не чекав розпакування.
+
+    У зібраному .exe кожен запуск коду — це новий процес, який спершу
+    розпаковує 40 МБ архіву. На теплому диску це ~1 с, на холодному —
+    хвилини, і саме на них людина дивиться після першого F5. Прогрів робить
+    цю роботу, поки вона читає умову задачі.
+
+    Нічого не повертає й нічого не ламає: будь-яка помилка тут — не помилка
+    застосунку, а лише відсутній прогрів. Запускається у фоновому потоці,
+    тому вікно відкривається одразу.
+    """
+    def run() -> None:
+        try:
+            _run_process("pass\n", "", WARMUP_TIMEOUT, None, DEFAULT_ENTRYPOINT)
+        except Exception:                  # прогрів не має права валити запуск
+            pass
+
+    thread = threading.Thread(target=run, daemon=True, name="pytrainer-warmup")
+    thread.start()
+    return thread
+
+
 def _read_capped(path: str) -> tuple[str, bool]:
     """Читає початок файлу з виводом, не затягуючи в пам'ять усе."""
     size = os.path.getsize(path)
@@ -475,11 +527,15 @@ def run_code(
         result.output_truncated = truncated
 
     # --- перевірки виводу: кожна окремим запуском зі своїм вводом ---
-    for check in stdout_checks:
-        feed = check.stdin if check.stdin is not None else stdin
-        out, err, exit_code, timed_out, truncated = _run_process(
-            code, feed, timeout, files, entrypoint
-        )
+    feeds = [check.stdin if check.stdin is not None else stdin
+             for check in stdout_checks]
+    runs = _run_in_parallel(
+        lambda feed: _run_process(code, feed, timeout, files, entrypoint),
+        feeds,
+    )
+
+    for check, run in zip(stdout_checks, runs):
+        out, err, exit_code, timed_out, truncated = run
         result.output_truncated = result.output_truncated or truncated
         if timed_out:
             result.checks.append(

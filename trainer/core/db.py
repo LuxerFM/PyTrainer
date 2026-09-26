@@ -17,12 +17,12 @@ from contextlib import closing
 from datetime import date, datetime
 from pathlib import Path
 
-from ..paths import app_folder
+from ..paths import BACKUP_FOLDER, database_path
 from . import scoring
 
-# База лежить поруч із застосунком (а в зібраному .exe — поруч із ним самим,
-# а не в тимчасовій теці розпакування: див. trainer/paths.py).
-DB_PATH = app_folder() / "pytrainer.db"
+# База лежить у службовій теці системи, а не поруч із .exe: там її може
+# зіпсувати синхронізація з хмарою (див. trainer/paths.py).
+DB_PATH = database_path()
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS progress (
@@ -69,7 +69,6 @@ def _today() -> str:
     return date.today().isoformat()
 
 
-BACKUP_FOLDER = "backups"
 BACKUP_KEEP = 7
 
 
@@ -134,10 +133,35 @@ class Database:
     def __init__(self, path: str | Path = DB_PATH) -> None:
         self.path = str(path)
         self.connection = sqlite3.connect(self.path)
-        self.connection.row_factory = sqlite3.Row
-        self.connection.executescript(SCHEMA)
-        self._migrate()
-        self.connection.commit()
+        try:
+            self.connection.row_factory = sqlite3.Row
+            # WAL: запис не блокує читання, і база переживає паралельний доступ
+            # (друге вікно, скрипт експорту, антивірус, що читає файл).
+            # busy_timeout: замість миттєвого «database is locked» — очікування.
+            # synchronous=NORMAL — компроміс, який SQLite радить для WAL: дані
+            # не гуляють при падінні програми, а запис не коштує fsync щоразу.
+            self.connection.execute("PRAGMA journal_mode=WAL")
+            self.connection.execute("PRAGMA busy_timeout=5000")
+            self.connection.execute("PRAGMA synchronous=NORMAL")
+            self.connection.executescript(SCHEMA)
+            self._migrate()
+            self.connection.commit()
+        except sqlite3.DatabaseError:
+            # Файл не є базою (або база побита) — помітно вже на першому
+            # PRAGMA, який читає заголовок. Закриваємо з'єднання: на Windows
+            # відкритий файл не дає себе ні перейменувати, ні видалити, а
+            # `app.open_database` саме це й робить — відсуває його вбік.
+            self.connection.close()
+            raise
+
+    def quick_check(self) -> bool:
+        """Чи база не побита. На наших обсягах — мілісекунди.
+
+        Повна перевірка (`integrity_check`) читає всю базу цілком; швидкої
+        досить, щоб помітити обрив запису й не працювати далі поверх сміття.
+        """
+        row = self.connection.execute("PRAGMA quick_check").fetchone()
+        return bool(row) and row[0] == "ok"
 
     def _columns(self, table: str) -> set[str]:
         return {

@@ -17,8 +17,15 @@ import threading
 from datetime import date
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QColor, QKeySequence, QShortcut, QTextCursor
+from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import (
+    QAction,
+    QColor,
+    QDesktopServices,
+    QKeySequence,
+    QShortcut,
+    QTextCursor,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -54,7 +61,7 @@ from ..core.review import cold_seconds, pick_cold_task
 from ..core.runner import RunResult, run_task
 from ..core.session import StudySession, StudyUpdate
 from ..core.stats import overall, weak_topics
-from ..paths import app_folder
+from ..paths import app_folder, data_folder
 from .digest_page import DigestDialog
 from .editor import CodeEditor
 from .sidebar import SideNav
@@ -166,6 +173,8 @@ class MainWindow(QMainWindow):
                          self.export_solutions)
         self._add_action(file_menu, "Експортувати прогрес…", None, self.export_progress)
         self._add_action(file_menu, "Імпортувати прогрес…", None, self.import_progress)
+        self._add_action(file_menu, "Відкрити теку з даними", None,
+                         self.open_data_folder)
         file_menu.addSeparator()
         self._add_action(file_menu, "Оновити Python-Roadmap.md", None, self.rewrite_roadmap)
         file_menu.addSeparator()
@@ -1232,6 +1241,18 @@ class MainWindow(QMainWindow):
             "F1 — ця довідка",
         )
 
+    def open_data_folder(self) -> None:
+        """Відкриває теку, де лежить база, копії й налаштування.
+
+        Людина має бачити, де її прогрес: це перше питання, яке виникає, коли
+        треба зробити копію, перенести дані на інший комп'ютер або показати
+        файл комусь іншому.
+        """
+        folder = data_folder()
+        folder.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+        self.status_msg.setText(f"Тека даних: {folder}")
+
     def show_about(self) -> None:
         QMessageBox.information(
             self, "Про тренажер",
@@ -1242,6 +1263,10 @@ class MainWindow(QMainWindow):
             "Прогрес, XP, підказки й черга повторень зберігаються в SQLite "
             f"({Path(self.db.path).name}), а Python-Roadmap.md і progress.json "
             "оновлюються самі.\n\n"
+            f"Тека даних: {data_folder()}\n"
+            "Вона лежить поза синхронізованими теками (OneDrive, Dropbox), бо "
+            "хмара посеред запису псує базу SQLite. Відкрити її можна з меню "
+            "«Файл».\n\n"
             "Розміри вікон, тема, масштаб шрифту й остання задача "
             "запам'ятовуються між запусками (pytrainer.ini).",
         )

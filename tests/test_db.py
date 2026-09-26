@@ -209,6 +209,43 @@ class DatabaseTests(unittest.TestCase):
         self.assertIsNone(self.db.review("w1-hello"))
 
 
+class DatabaseHardeningTests(unittest.TestCase):
+    """Те, що захищає багатомісячний прогрес від паралельності й обривів."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = Path(self.tmp.name) / "hardened.db"
+
+    def test_wal_mode_and_busy_timeout_are_on(self) -> None:
+        db = Database(self.path)
+        self.addCleanup(db.close)
+
+        self.assertEqual(
+            db.connection.execute("PRAGMA journal_mode").fetchone()[0], "wal"
+        )
+        self.assertEqual(
+            db.connection.execute("PRAGMA busy_timeout").fetchone()[0], 5000
+        )
+
+    def test_quick_check_passes_on_a_healthy_base(self) -> None:
+        db = Database(self.path)
+        self.addCleanup(db.close)
+        db.record_attempt("w1-hello", ok=True, with_checks=True, xp=100)
+        self.assertTrue(db.quick_check())
+
+    def test_two_connections_share_one_file(self) -> None:
+        """Друге з'єднання (експорт, скрипт) не має впиратись у «locked»."""
+        first = Database(self.path)
+        self.addCleanup(first.close)
+        first.record_attempt("w1-hello", ok=True, with_checks=True, xp=100)
+
+        second = Database(self.path)
+        self.addCleanup(second.close)
+        second.record_attempt("w1-vars", ok=True, with_checks=True, xp=50)
+        self.assertEqual(first.attempts_count("w1-vars"), 1)
+
+
 class MistakeLogTests(unittest.TestCase):
     """Журнал помилок: що саме людина не здала, скільки разів — і чи вже закрито.
 

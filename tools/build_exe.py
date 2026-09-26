@@ -37,11 +37,14 @@ HOWTO = """PyTrainer — тренажер Python
 ================================
 
 1. Запусти PyTrainer{ext} (подвійний клік).
-2. Поруч з'являться pytrainer.db (твій прогрес), progress.json,
-   Python-Roadmap.md і pytrainer.ini (налаштування) — не видаляй їх,
-   якщо не хочеш почати навчання спочатку.
-3. Щоб перенести прогрес на інший комп'ютер, скопіюй усю цю теку разом
-   із прогресом, або скористайся «Файл → Експортувати прогрес».
+2. Прогрес (pytrainer.db) лежить у службовій теці системи, а не в цій:
+   Windows — %LOCALAPPDATA%\PyTrainer, інші системи —
+   ~/.local/share/PyTrainer. Відкрити її можна з меню «Файл → Відкрити
+   теку з даними», а поруч із .exe лишаються progress.json,
+   Python-Roadmap.md і pytrainer.ini (налаштування).
+3. Щоб перенести прогрес на інший комп'ютер, скопіюй теку даних цілком,
+   скористайся «Файл → Експортувати прогрес» або запусти з прапорцем
+   --data-dir ТЕКА — тоді все ляже в одну теку, яку можна носити з собою.
 
 Інтернет не потрібен, права адміністратора — теж.
 """.format(ext=".exe" if sys.platform == "win32" else "")
@@ -153,6 +156,10 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print(f"Встановлено поруч із проєктом: {installed}")
         print("База знайома та сама, що й у запуску з коду — прогрес не подвоюється.")
+        sys.path.insert(0, str(ROOT))
+        from trainer.paths import data_folder      # noqa: PLC0415
+
+        print(f"Дані (база, копії, замок): {data_folder()}")
         print(f"Ярлик на робочий стіл: {sys.executable} tools/make_shortcut.py")
     return 0
 

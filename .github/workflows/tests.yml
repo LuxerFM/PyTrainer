@@ -146,5 +146,7 @@ jobs:
           generate_release_notes: true
           body: |
             Windows: завантаж `PyTrainer-windows.zip`, розпакуй і запусти
-            `PyTrainer.exe`. Прогрес ляже поруч із .exe — теку можна
-            переносити цілком.
+            `PyTrainer.exe`. Прогрес ляже в `%LOCALAPPDATA%\PyTrainer`
+            (меню «Файл → Відкрити теку з даними»), а `progress.json` і
+            `Python-Roadmap.md` — поруч із .exe. Хочеш усе в одній теці —
+            запускай із прапорцем `--data-dir ТЕКА` (портативний режим).

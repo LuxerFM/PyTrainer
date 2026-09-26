@@ -10,6 +10,9 @@ pytrainer-demo.db
 backups/
 pytrainer.ini
 
+# старі файли, які перенос даних у службову теку лишає на місці
+*.moved
+
 # те, що створює tools/build_exe.py
 build/
 dist/

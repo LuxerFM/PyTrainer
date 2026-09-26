@@ -21,6 +21,12 @@ import sys
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv if argv is None else argv)
 
+    # Найперше — тека даних: шлях до бази обчислюється під час імпорту
+    # `trainer.core.db`, тому `--data-dir` має бути врахований раніше.
+    from .paths import apply_data_dir
+
+    apply_data_dir(argv)
+
     from .core.exec_runner import FLAG as RUN_FLAG, main as run_main
 
     if RUN_FLAG in argv:
