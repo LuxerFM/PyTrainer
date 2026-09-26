@@ -1,13 +1,13 @@
-"""Сторінка «План»: що робити сьогодні, у якому порядку й скільки часу.
+"""The "План" ("Plan") page: what to do today, in what order, how long.
 
-Головна проблема будь-якого самотнього навчання — не брак матеріалу, а питання
-«з чого почати?». Тому замість списку з 47 задач тут кілька кроків на один
-вечір: спершу те, що забувається, потім слабке місце, далі нове.
+The main problem of any solo learning is not lacking material but the "where
+to start?" question. So instead of a 47-task list there are a few steps for
+one evening: first what is being forgotten, then the weak spot, then new.
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QCoreApplication, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QLabel,
@@ -20,29 +20,38 @@ from PySide6.QtWidgets import (
 from ..core.plan import DailyPlan
 from .theme import Colors
 
+
+def _tr(text: str) -> str:
+    return QCoreApplication.translate("PlanPage", text)
+
+
 KIND_COLOUR = {
     "review": Colors.warn,
     "weak": Colors.error,
     "new": Colors.success,
 }
-KIND_LABEL = {
-    "review": "повторення",
-    "weak": "слабке місце",
-    "new": "нова задача",
-}
+
+
+def _kind_label(kind: str) -> str:
+    # Literals sit inside translate() calls so lupdate can extract them.
+    return {
+        "review": _tr("повторення"),
+        "weak": _tr("слабке місце"),
+        "new": _tr("нова задача"),
+    }.get(kind, kind)
 
 
 def _human_minutes(minutes: int) -> str:
     hours, rest = divmod(minutes, 60)
     if hours and rest:
-        return f"{hours} год {rest} хв"
+        return _tr("{h} год {m} хв").format(h=hours, m=rest)
     if hours:
-        return f"{hours} год"
-    return f"{rest} хв"
+        return _tr("{h} год").format(h=hours)
+    return _tr("{m} хв").format(m=rest)
 
 
 class PlanPage(QWidget):
-    """Короткий план на день: клікабельні кроки."""
+    """Short day plan: clickable steps."""
 
     task_selected = Signal(str)
 
@@ -52,7 +61,7 @@ class PlanPage(QWidget):
         box.setContentsMargins(14, 12, 14, 12)
         box.setSpacing(6)
 
-        self.summary = QLabel("План на сьогодні")
+        self.summary = QLabel(_tr("План на сьогодні"))
         self.summary.setObjectName("TaskTitle")
         self.summary.setWordWrap(True)
         box.addWidget(self.summary)
@@ -68,40 +77,41 @@ class PlanPage(QWidget):
         box.addWidget(self.steps, 1)
 
         self.empty = QLabel(
-            "Усе написане вже здано 🎉 Наступні блоки плану ще в розробці — "
-            "а поки що повертайся до слабких тем, щоб не втратити форму."
+            _tr("Усе написане вже здано 🎉 Наступні блоки плану ще в розробці — "
+                "а поки що повертайся до слабких тем, щоб не втратити форму.")
         )
         self.empty.setObjectName("Subtle")
         self.empty.setWordWrap(True)
         box.addWidget(self.empty)
 
     def set_plan(self, plan: DailyPlan) -> None:
-        """Малює план: кількість кроків, оцінку часу й самі кроки."""
+        """Draws the plan: step count, time estimate and the steps."""
         self.steps.clear()
         self.empty.setVisible(plan.empty)
 
         if plan.empty:
-            self.summary.setText("План на сьогодні порожній")
+            self.summary.setText(_tr("План на сьогодні порожній"))
             self.note.setText(
-                "Це не помилка: або все здано, або черга повторень порожня."
+                _tr("Це не помилка: або все здано, або черга повторень порожня.")
             )
             self.note.setVisible(True)
             return
 
         self.summary.setText(
-            f"План на сьогодні · {len(plan.steps)} кроків · "
-            f"≈{_human_minutes(plan.minutes)}"
+            _tr("План на сьогодні · {n} кроків · ≈{time}").format(
+                n=len(plan.steps), time=_human_minutes(plan.minutes))
         )
         self.note.setText(
-            "Порядок не випадковий: спершу те, що ось-ось забудеться, потім "
-            "слабке місце, і аж потім нове."
+            _tr("Порядок не випадковий: спершу те, що ось-ось забудеться, потім "
+                "слабке місце, і аж потім нове.")
         )
         self.note.setVisible(True)
 
         for index, step in enumerate(plan.steps, start=1):
             item = QListWidgetItem(
                 f"{index}. {step.title}\n"
-                f"{KIND_LABEL.get(step.kind, step.kind)} · ~{step.minutes} хв"
+                f"{_kind_label(step.kind)} · "
+                f"~{step.minutes} {_tr('хв')}"
             )
             item.setData(Qt.ItemDataRole.UserRole, step.task_id)
             item.setForeground(QColor(KIND_COLOUR.get(step.kind, Colors.text)))
