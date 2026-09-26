@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -35,6 +36,8 @@ PySide6 не знайдено у поточному Python.
     .venv\\Scripts\\python.exe -m pip install -r requirements.txt
 """
 
+from .core.exec_runner import ensure_streams  # noqa: E402
+
 # Іконка лежить усередині застосунку, тому беремо її через `resource()`:
 # у зібраному .exe це тека розпакування, а не корінь проєкту.
 from .paths import resource  # noqa: E402
@@ -45,6 +48,11 @@ VIEWS = {"roadmap": 0, "reviews": 1, "progress": 2, "plan": 3}
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv if argv is None else argv)
+
+    # У зібраному .exe PyInstaller приєднує вивід із кодуванням системи, і
+    # будь-яке «…» у ньому зриває друк у консольних режимах (`--demo`,
+    # `--screenshot`). Див. `core/exec_runner.ensure_streams`.
+    ensure_streams()
 
     try:
         from PySide6.QtCore import QTimer
@@ -73,8 +81,9 @@ def main(argv: list[str] | None = None) -> int:
     theme = argv[argv.index("--theme") + 1] if "--theme" in argv else None
     apply_theme(app, theme)
 
+    demo_folder: Path | None = None
     if "--demo" in argv:
-        window = _demo_window(Database)
+        window, demo_folder = _demo_window(Database)
     else:
         # Тиха копія бази перед роботою: прогрес за місяці не має залежати
         # від одного файлу.
@@ -101,11 +110,23 @@ def main(argv: list[str] | None = None) -> int:
 
         QTimer.singleShot(2500, capture)
 
-    return app.exec()
+    code = app.exec()
+
+    # Демо-база тимчасова — прибираємо її після виходу. Інакше кожен запуск
+    # (а їх у тестах і в CI десятки) лишав би в %TEMP% теку pytrainer_demo_*,
+    # і через місяць там лежали б сотні копій однієї й тієї ж демо-бази.
+    # Видаляємо саме тут, а не в closeEvent: база вже закрита вікном, а якщо
+    # процес уб'ють силою — прибирати нічого не зламає.
+    if demo_folder is not None:
+        shutil.rmtree(demo_folder, ignore_errors=True)
+    return code
 
 
-def _demo_window(database) -> "MainWindow":
-    """Вікно на тимчасовій базі з демонстраційним прогресом."""
+def _demo_window(database) -> tuple["MainWindow", Path]:
+    """Вікно на тимчасовій базі з демонстраційним прогресом.
+
+    Повертає ще й теку цієї бази — її прибирає `main()` після виходу.
+    """
     from .core.demo import seed_database
     from .ui.main_window import MainWindow
 
@@ -113,9 +134,10 @@ def _demo_window(database) -> "MainWindow":
     db = database(folder / "demo.db")
     seed_database(db)
     print(f"Демо-режим: тимчасова база {db.path}")
-    return MainWindow(
+    window = MainWindow(
         db=db,
         roadmap_path=folder / "Python-Roadmap.md",
         progress_path=folder / "progress.json",
         settings_path=None,        # демо не має пам'ятати стан справжнього застосунку
     )
+    return window, folder

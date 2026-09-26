@@ -19,18 +19,28 @@
     в тому ж середовищі (тому бачить його функції та змінні);
   * перевірка виводу — окремий запуск, де програмі подається ввід (ніби
     користувач щось надрукував) і порівнюється те, що вона вивела.
+
+Один нюанс, заради якого тут є окремий шлях: у зібраному `.exe`
+`sys.executable` вказує не на Python, а на сам тренажер (див.
+`interpreter_command` і `trainer/core/exec_runner.py`).
 """
 
 from __future__ import annotations
 
 import json
 import os
+import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass, field
 
 from curriculum.schema import Check
+
+from ..paths import is_frozen
+from .exec_runner import FLAG as RUN_FLAG
 
 MARKER = "__PYTRAINER_RESULTS__"
 DEFAULT_TIMEOUT = 5.0
@@ -218,6 +228,85 @@ def _short(text: str, limit: int = 90) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+def interpreter_command(entrypoint: str) -> list[str]:
+    """Команда, якою виконується код користувача.
+
+    Звичний випадок — `python` з двома прапорцями: `-X utf8` (кирилиця у
+    файлах і виводі) і `-u` (вивід не тримається в буфері, тож його видно
+    навіть тоді, коли код убили по таймауту).
+
+    У зібраному `.exe` `sys.executable` — це сам тренажер, а не Python, і
+    прапорці інтерпретатора йому нічого не кажуть: замість них передається
+    `--exec-runner`. Тоді `.exe` виконує файл своїм вбудованим інтерпретатором
+    і одразу виходить — без другого вікна, без Qt і без діалогів помилок.
+    """
+    if is_frozen():
+        return [sys.executable, RUN_FLAG, entrypoint]
+    return [sys.executable, "-X", "utf8", "-u", entrypoint]
+
+
+def _process_group_kwargs() -> dict:
+    """Ключі `Popen`, завдяки яким дитину можна вбити разом із нащадками.
+
+    У зібраному `.exe` безпосередня дитина — це bootloader PyInstaller-а, а
+    справжній інтерпретатор — дитина вже його. Нова група процесів на Unix і
+    прапорці Windows дозволяють прибрати все дерево, а не лише перший
+    процес. `CREATE_NO_WINDOW` заразом не дає блимнути консолі.
+    """
+    if os.name != "nt":
+        return {"start_new_session": True}
+    flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    flags |= getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    return {"creationflags": flags}
+
+
+def _terminate_tree(process: subprocess.Popen) -> None:
+    """Зупиняє процес разом із нащадками й чекає, поки він справді помре.
+
+    `process.kill()` вбиває лише безпосередню дитину. Якщо нащадки лишаться
+    жити, вони тримають тимчасові файли відкритими — звідси й WinError 32,
+    через який раніше зривався весь запуск перевірок, — і накопичуються
+    наступними запусками.
+    """
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            check=False,
+        )
+    else:
+        try:
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        except OSError:
+            process.kill()        # групи вже немає — вбиваємо хоч дитину
+    try:
+        process.wait(timeout=5)
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+
+
+def _remove_dir(path: str, attempts: int = 6) -> bool:
+    """Прибирає тимчасову теку, не падаючи через зайняті файли.
+
+    Windows ще кілька мілісекунд тримає файли, які писав щойно вбитий процес,
+    тому перші спроби можуть не вдатись (WinError 32). Впасти тут не можна:
+    прибирання теки не варте жодного результату перевірки, а раніше саме це
+    й ламало запуск коду в зібраному `.exe`.
+    """
+    for attempt in range(attempts):
+        try:
+            shutil.rmtree(path)
+        except FileNotFoundError:
+            return True
+        except OSError:
+            time.sleep(0.05 * (attempt + 1))
+        else:
+            return True
+    return False
+
+
 def _read_capped(path: str) -> tuple[str, bool]:
     """Читає початок файлу з виводом, не затягуючи в пам'ять усе."""
     size = os.path.getsize(path)
@@ -241,7 +330,8 @@ def _run_process(
 
     Повертає (stdout, stderr, код виходу, чи був таймаут, чи обрізано вивід).
     """
-    with tempfile.TemporaryDirectory(prefix="pytrainer_") as workdir:
+    workdir = tempfile.mkdtemp(prefix="pytrainer_")
+    try:
         for name, content in (files or {}).items():
             target = os.path.join(workdir, name)
             os.makedirs(os.path.dirname(target), exist_ok=True)
@@ -257,29 +347,36 @@ def _run_process(
 
         with open(out_path, "wb") as out, open(err_path, "wb") as err:
             process = subprocess.Popen(
-                [sys.executable, "-X", "utf8", "-u", entrypoint],
+                interpreter_command(entrypoint),
                 stdin=subprocess.PIPE,
                 stdout=out,
                 stderr=err,
                 cwd=workdir,          # тому sys.path[0] = тимчасова папка → import своїх файлів працює
                 env=env,
+                **_process_group_kwargs(),
             )
             try:
                 process.communicate(input=stdin.encode("utf-8"), timeout=timeout)
                 timed_out = False
             except subprocess.TimeoutExpired:
-                process.kill()
-                process.communicate()
+                # Спершу прибираємо процес із нащадками, і лише потім закриваємо
+                # й читаємо файли: поки вони живі, Windows їх не віддає.
+                _terminate_tree(process)
+                try:
+                    process.communicate(timeout=5)
+                except (subprocess.TimeoutExpired, OSError, ValueError):
+                    pass
                 timed_out = True
 
+        exit_code = -1 if timed_out else process.returncode
         stdout, out_truncated = _read_capped(out_path)
         stderr, err_truncated = _read_capped(err_path)
+    finally:
+        _remove_dir(workdir)
 
     if timed_out:
         stderr += f"Код працював довше ніж {timeout:g} с і був зупинений.\n"
-    return stdout, stderr, (-1 if timed_out else process.returncode), timed_out, (
-        out_truncated or err_truncated
-    )
+    return stdout, stderr, exit_code, timed_out, (out_truncated or err_truncated)
 
 
 def _evaluate_stdout(check: Check, out: str) -> CheckResult:

@@ -7,7 +7,9 @@
 2. малює іконки, якщо їх немає (assets/icon.png, assets/icon.ico);
 3. збирає один файл `dist/PyTrainer.exe` за `pytrainer.spec`;
 4. кладе поруч README, LICENSE і коротку інструкцію — щоб людині, яка
-   завантажила архів, не треба було нічого добудовувати.
+   завантажила архів, не треба було нічого добудовувати;
+5. просить зібраний .exe виконати код і показати вердикт — якщо він цього не
+   вміє, збірка вважається невдалою (`--no-check` вимикає цю перевірку).
 
 З прапорцем `--install` той самий .exe копіюється ще й у корінь проєкту —
 тобто туди, де вже лежить прогрес. Для себе самого це найзручніший варіант:
@@ -21,6 +23,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import subprocess
 import sys
@@ -53,11 +56,42 @@ def ensure_icons() -> None:
     subprocess.run([sys.executable, str(ROOT / "tools" / "make_icon.py")], check=True)
 
 
+def check_self_test(exe: Path) -> bool:
+    """Просить .exe виконати код і показати вердикт — головна перевірка збірки.
+
+    Вікно відкривається навіть тоді, коли запуск коду в зібраному .exe зламаний:
+    саме так і сталося одного разу, коли `sys.executable` у `.exe` — це сам
+    тренажер. Тому збірка сама себе перевіряє не «чи малюється вікно», а «чи
+    приходить вердикт» (див. `trainer/core/selfcheck.py`).
+    """
+    report = exe.parent / "selftest.json"
+    print()
+    print("Перевіряю, що .exe виконує код і перевірки…")
+    result = subprocess.run([str(exe), "--self-test", str(report)], check=False)
+
+    text = ""
+    try:
+        text = report.read_text(encoding="utf-8")
+        steps = json.loads(text).get("steps", [])
+    except (OSError, ValueError):
+        steps = []
+    for step in steps:
+        mark = "ок" if step.get("ok") else "ПОМИЛКА"
+        print(f"  [{mark}] {step.get('name')} — {step.get('detail')}")
+    # Порожній або нечитабельний звіт — це не «все гаразд», а «нічого не
+    # перевірили»: саме тому тут потрібні і код виходу, і самі кроки.
+    return result.returncode == 0 and bool(steps) and all(step.get("ok") for step in steps)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Зібрати PyTrainer.exe")
     parser.add_argument(
         "--install", action="store_true",
         help="покласти .exe поруч із проєктом (туди, де лежить прогрес)",
+    )
+    parser.add_argument(
+        "--no-check", action="store_true",
+        help="не перевіряти зібраний .exe самоперевіркою (вона запускає його 7 разів)",
     )
     args = parser.parse_args(argv)
 
@@ -102,6 +136,12 @@ def main(argv: list[str] | None = None) -> int:
     (DIST / ("ЯК_ЗАПУСКАТИ.txt" if sys.platform == "win32" else "HOW_TO_RUN.txt")).write_text(
         HOWTO, encoding="utf-8"
     )
+
+    if not args.no_check and not check_self_test(built):
+        print()
+        print("Самоперевірка не пройшла: .exe зібрано, але код у ньому не виконується.")
+        print("Вікно при цьому відкривається — тому й перевіряємо вердикт, а не вікно.")
+        return 1
 
     print()
     print(f"Готово: {built} ({built.stat().st_size / 1_048_576:.1f} МБ)")

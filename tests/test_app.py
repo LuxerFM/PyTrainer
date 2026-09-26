@@ -90,6 +90,24 @@ class EntryPointTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(before, {path.name for path in ROOT.iterdir()})
 
+    def test_demo_run_leaves_no_temp_folder(self) -> None:
+        """Тимчасова база демо прибирається, а не збирається у %TEMP%.
+
+        Демо-режим запускають тести, скрипт знімків і CI — без прибирання
+        кожен запуск лишав би по собі теку `pytrainer_demo_*`.
+        """
+        before = set(Path(tempfile.gettempdir()).glob("pytrainer_demo_*"))
+        shot = self.folder / "clean.png"
+
+        code = app_module.main(["pytrainer", "--demo", "--screenshot", str(shot)])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            set(Path(tempfile.gettempdir()).glob("pytrainer_demo_*")) - before,
+            set(),
+            "демо-тека лишилась у %TEMP%",
+        )
+
     def test_unknown_flag_is_ignored(self) -> None:
         """Зайвий прапорець не має валити запуск."""
         shot = self.folder / "unknown.png"

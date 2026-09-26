@@ -12,8 +12,12 @@
 
 from __future__ import annotations
 
+import ast
+import importlib.util
+import json
 import re
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -85,6 +89,67 @@ class PathsTest(unittest.TestCase):
             self.assertEqual(paths.resource("assets", "icon.png"), unpack / "assets" / "icon.png")
 
 
+def imported_modules(sources: list[str]) -> set[str]:
+    """Верхні імена модулів, які імпортує код (sqlite3.dbapi2 → sqlite3)."""
+    found: set[str] = set()
+    for source in sources:
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue      # заготовка може бути неповною — це не привід падати
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                found.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                found.add(node.module.split(".")[0])
+    return found
+
+
+def task_sources() -> list[str]:
+    """Увесь код, який виконується в .exe: заготовки, перевірки, розв'язки, файли."""
+    sources: list[str] = []
+    for item in all_tasks():
+        sources.append(item.starter)
+        sources.extend(check.code for check in item.checks if check.code)
+        if item.solution_hint is not None:
+            sources.append(item.solution_hint.text)
+        sources.extend(item.files.values())
+    return sources
+
+
+def trainer_sources() -> list[str]:
+    """Код тренажера — саме його читає PyInstaller, коли вирішує, що брати."""
+    files = [*ROOT.glob("trainer/**/*.py"), ROOT / "main.py"]
+    return [path.read_text(encoding="utf-8") for path in files if path.is_file()]
+
+
+class BundledModulesTest(unittest.TestCase):
+    """Імпорти коду задач мусять існувати всередині зібраного .exe.
+
+    PyInstaller кладе в архів лише те, що знайшов у коді тренажера. Тому
+    `import csv` у розв'язку працює із коду й падає **тільки** в .exe — а
+    .exe це саме те, чим користується той, кому тренажер дали. Тут ми беремо
+    імпорти справжніх задач і звіряємо їх зі списком `USER_MODULES` у
+    специфікації: додав задачу з новим модулем — тест скаже, що дописати.
+    """
+
+    def setUp(self) -> None:
+        self.namespace = load_spec()
+
+    def test_every_import_of_every_task_is_bundled(self) -> None:
+        bundled = imported_modules(trainer_sources())
+        bundled.update(name.split(".")[0] for name in self.namespace["USER_MODULES"])
+        # Файли, які задача приносить із собою (utils.py, fake_api.py), лягають
+        # у тимчасову папку поруч із розв'язком — у збірку їх брати не треба.
+        bundled.update(Path(name).stem for item in all_tasks() for name in item.files)
+        missing = imported_modules(task_sources()) - bundled
+        self.assertEqual(
+            sorted(missing), [],
+            "ці модулі потрібні коду задач, а в .exe їх не буде: "
+            "додай їх до USER_MODULES у pytrainer.spec",
+        )
+
+
 class SpecTest(unittest.TestCase):
     def setUp(self) -> None:
         self.namespace = load_spec()
@@ -112,6 +177,67 @@ class SpecTest(unittest.TestCase):
 
     def test_excludes_heavy_stdlib_packages(self) -> None:
         self.assertIn("tkinter", self.namespace["_seen"]["kwargs"]["excludes"])
+
+
+def load_build_script():
+    """Завантажує `tools/build_exe.py` як модуль, не запускаючи його."""
+    spec = importlib.util.spec_from_file_location("build_exe", ROOT / "tools" / "build_exe.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class BuildScriptTest(unittest.TestCase):
+    """Збірка сама себе перевіряє: .exe мусить уміти виконати код.
+
+    Це єдина перевірка, яка справді ловить зламане виконання коду в `.exe`:
+    вікно відкривається і тоді, коли розв'язок не запускається.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.build = load_build_script()
+
+    def setUp(self) -> None:
+        self.folder = tempfile.TemporaryDirectory(prefix="pytrainer_build_")
+        self.addCleanup(self.folder.cleanup)
+        self.exe = Path(self.folder.name) / "PyTrainer.exe"
+        self.report = self.exe.parent / "selftest.json"
+
+    def run_exe_with(self, returncode: int):
+        return mock.patch.object(
+            self.build.subprocess, "run", return_value=mock.Mock(returncode=returncode)
+        )
+
+    def test_passing_report_means_a_good_build(self) -> None:
+        self.report.write_text(
+            json.dumps({"ok": True, "steps": [{"name": "крок", "ok": True, "detail": ""}]}),
+            encoding="utf-8",
+        )
+        with self.run_exe_with(0):
+            self.assertTrue(self.build.check_self_test(self.exe))
+
+    def test_non_zero_exit_code_fails_the_build(self) -> None:
+        with self.run_exe_with(1):
+            self.assertFalse(self.build.check_self_test(self.exe))
+
+    def test_unreadable_report_is_not_a_pass(self) -> None:
+        """Немає звіту — немає й доказу, що код виконується."""
+        with self.run_exe_with(0):
+            self.assertFalse(self.build.check_self_test(self.exe))
+        self.report.write_text("не json", encoding="utf-8")
+        with self.run_exe_with(0):
+            self.assertFalse(self.build.check_self_test(self.exe))
+
+    def test_failed_step_fails_the_build_even_with_code_zero(self) -> None:
+        self.report.write_text(
+            json.dumps({"ok": False, "steps": [
+                {"name": "крок", "ok": False, "detail": "не так"},
+            ]}),
+            encoding="utf-8",
+        )
+        with self.run_exe_with(0):
+            self.assertFalse(self.build.check_self_test(self.exe))
 
 
 class DocsTest(unittest.TestCase):

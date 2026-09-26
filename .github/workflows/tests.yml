@@ -103,6 +103,20 @@ jobs:
           if (-not (Test-Path smoke.png)) { throw "Застосунок не зробив знімок — .exe не працює" }
           Get-Item dist\PyTrainer.exe | Select-Object Name, @{n="МБ";e={[math]::Round($_.Length/1MB,1)}}
 
+      # Вікно відкривається навіть тоді, коли запуск коду в зібраному .exe
+      # зламаний (так і було: sys.executable у .exe — це сам тренажер).
+      # Тому перевіряємо не вікно, а вердикт: .exe сам виконує код,
+      # зламаний код і while True — і пише, чи все зійшлось.
+      - name: Перевірити, що .exe виконує код і перевірки
+        run: |
+          .\dist\PyTrainer.exe --self-test selftest.json
+          Get-Content selftest.json
+          $report = Get-Content selftest.json -Raw | ConvertFrom-Json
+          if (-not $report.ok) {
+            $failed = ($report.steps | Where-Object { -not $_.ok } | ForEach-Object { $_.name + ': ' + $_.detail }) -join '; '
+            throw "Запуск коду в .exe не працює. Невдалі кроки: $failed"
+          }
+
       - name: Архів для завантаження
         run: Compress-Archive -Path dist\* -DestinationPath PyTrainer-windows.zip
 

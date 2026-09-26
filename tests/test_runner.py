@@ -3,10 +3,16 @@
 Запуск: .venv\\Scripts\\python.exe -m unittest discover -s tests -v
 """
 
+import subprocess
+import sys
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
 from curriculum import find_task
 from curriculum.schema import code, stdout
+from trainer.core import runner
 from trainer.core.runner import run_code, run_task
 
 
@@ -222,6 +228,43 @@ class RunCodeTests(unittest.TestCase):
         self.assertTrue(task.has_files)
         result = run_task(task, task.solution_hint.text)
         self.assertTrue(result.all_passed)
+
+
+class ProcessCleanupTests(unittest.TestCase):
+    """Прибирання після запуску: процес із нащадками та тимчасова тека.
+
+    Саме тут у зібраному `.exe` все й ламалось: вбивали лише безпосередню
+    дитину, нащадок жив, тримав файли і зривав прибирання теки помилкою
+    WinError 32 — тому вердикт не приходив взагалі.
+    """
+
+    def test_process_is_killed_together_with_its_children(self):
+        process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            **runner._process_group_kwargs(),
+        )
+        try:
+            runner._terminate_tree(process)
+            self.assertIsNotNone(process.poll(), "процес лишився жити")
+        finally:
+            process.kill()
+
+    def test_busy_folder_does_not_break_the_run(self):
+        """Windows тримає щойно написані файли — падати через це не можна."""
+        with mock.patch.object(runner.shutil, "rmtree",
+                               side_effect=PermissionError(32, "файл зайнятий")):
+            self.assertFalse(runner._remove_dir("немає такої теки", attempts=1))
+
+    def test_missing_folder_counts_as_removed(self):
+        missing = Path(tempfile.gettempdir()) / "pytrainer_такої_теки_немає"
+        self.assertTrue(runner._remove_dir(str(missing), attempts=1))
+
+    def test_timeout_leaves_no_temp_folder_behind(self):
+        before = set(Path(tempfile.gettempdir()).glob("pytrainer_*"))
+        result = run_code("while True:\n    pass\n", timeout=1.0)
+        self.assertTrue(result.timed_out)
+        after = set(Path(tempfile.gettempdir()).glob("pytrainer_*"))
+        self.assertEqual(after - before, set(), "тимчасова тека пережила таймаут")
 
 
 if __name__ == "__main__":

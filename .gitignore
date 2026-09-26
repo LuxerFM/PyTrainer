@@ -20,3 +20,6 @@ PyTrainer
 # покриття тестами
 .coverage
 coverage.txt
+
+# звіт самоперевірки (main.py --self-test)
+selftest.json

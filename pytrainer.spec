@@ -49,6 +49,41 @@ QT_UNUSED = (
 )
 
 
+# Модулі, які потрібні коду задач, але сам тренажер їх не імпортує.
+# PyInstaller збирає лише те, що знайшов у коді тренажера, тому без цього
+# списку `import csv` у розв'язку падав би в зібраному .exe — а .exe
+# це саме те, чим користується той, кому тренажер дали.
+USER_MODULES = [
+    "asyncio",
+    "collections",
+    "csv",
+    "datetime",
+    "functools",
+    "http",
+    "inspect",
+    "io",
+    "itertools",
+    "json",
+    "math",
+    "operator",
+    "random",
+    "re",
+    "sqlite3",
+    "sqlite3.dbapi2",
+    "ssl",
+    "statistics",
+    "string",
+    "textwrap",
+    "threading",
+    "time",
+    "traceback",
+    "typing",
+    "urllib",
+    "urllib.request",
+    "uuid",
+]
+
+
 def keep(name: str) -> bool:
     """False для бібліотек і даних, які нашій програмі не потрібні."""
     # У PySide6 бібліотеки звуться Qt6Core.dll, Qt6WebEngineCore.dll — тобто
@@ -68,7 +103,7 @@ a = Analysis(
     pathex=[str(ROOT)],
     binaries=[],
     datas=[(str(ICON_PNG), "assets")],
-    hiddenimports=[],
+    hiddenimports=USER_MODULES,
     hookspath=[],
     runtime_hooks=[],
     # У зібраному .exe нічого з цього не використовується, а важить чимало.
