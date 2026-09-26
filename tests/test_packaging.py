@@ -250,27 +250,20 @@ class DocsTest(unittest.TestCase):
         """
         total = unittest.defaultTestLoader.discover(str(ROOT / "tests")).countTestCases()
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        last_two = total % 100
-        last_one = total % 10
-        if last_one == 1 and last_two != 11:
-            form = "тест"
-        elif last_one in (2, 3, 4) and last_two not in (12, 13, 14):
-            form = "тести"
-        else:
-            form = "тестів"
+        form = "test" if total == 1 else "tests"
         self.assertIn(
             f"{total} {form}", readme,
-            f"у README немає згадки «{total} {form}» — онови цифри",
+            f"README has no mention of '{total} {form}' — update the numbers",
         )
 
     def test_readme_states_the_real_task_count(self) -> None:
-        """Число задач у README — теж обіцянка, і вона має бути правдою."""
+        """Task count in README is a promise too — it must stay true."""
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         total, ready = len(all_tasks()), len(study_tasks())
-        self.assertIn(f"{total} задач", readme,
-                      f"у README немає згадки «{total} задач» — онови цифри")
-        self.assertIn(f"{ready} уже можна розв'язувати", readme,
-                      f"у README немає «{ready} уже можна розв'язувати»")
+        self.assertIn(f"{total} tasks", readme,
+                      f"README has no mention of '{total} tasks' — update the numbers")
+        self.assertIn(f"{ready} ready to solve", readme,
+                      f"README has no mention of '{ready} ready to solve'")
 
     def test_readme_images_exist(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")

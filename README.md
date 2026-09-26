@@ -1,146 +1,148 @@
 # 🐍 PyTrainer
 
-**Десктопний тренажер Python, який перевіряє твій код, не дає списати розв'язок
-і змушує повертатися до того, що ти забув.**
+**A desktop Python trainer that runs your code, never hands out solutions,
+and makes you revisit what you forgot.**
 
-Не відеокурс і не «курс із готовими відповідями». Ти пишеш код у вбудованому
-редакторі, натискаєш `F5` — і програма реально запускає його на прихованих
-тестах. Через 1, 3, 7 і 30 днів задача повернеться на повторення.
+Not a video course, not a "course with ready answers". You write code in the
+built-in editor, press `F5` — and the program really runs it against hidden
+tests. After 1, 3, 7 and 30 days the task comes back for review.
 
-<!-- якщо репозиторій називається інакше — заміни LuxerFM/pytrainer у бейджах -->
-[![tests](https://github.com/LuxerFM/pytrainer/actions/workflows/tests.yml/badge.svg)](https://github.com/LuxerFM/pytrainer/actions/workflows/tests.yml)
+> UI language is Ukrainian — the product teaches through your native language.
+> This README, the docs and the code comments are in English.
+
+<!-- if the repository is named differently, replace LuxerFM/PyTrainer in the badges -->
+[![tests](https://github.com/LuxerFM/PyTrainer/actions/workflows/tests.yml/badge.svg)](https://github.com/LuxerFM/PyTrainer/actions/workflows/tests.yml)
 ![python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![UI](https://img.shields.io/badge/UI-PySide6%20·%20Qt%206-41cd52)
 
-![Головне вікно PyTrainer](docs/images/01-roadmap.png)
+![PyTrainer main window](docs/images/01-roadmap.png)
 
-## Чому це не «ще один курс»
+## Why this is not "yet another course"
 
-**Тут неможливо себе обманути.** Код виконується по-справжньому, у окремому
-процесі Python із таймаутом: якщо написати `while True` — процес буде зупинено,
-а не повисне застосунок. Перевіряються не «схожість на відповідь», а поведінка:
-`assert`-и по функціях і те, що програма надрукувала при заданому вводі.
+**You cannot fool yourself here.** Code runs for real, in a separate Python
+process with a timeout: write `while True` and the process gets killed instead
+of hanging the app. Checks assert on behaviour — function results and what the
+program printed for a given input — not on "similarity to the answer".
 
-**Розв'язок справді заблоковано.** Третій рівень підказки відкривається після
-10 хвилин активної роботи над задачею (у проєктів — 20–25). Рахується лише час,
-коли вікно у фокусі. Кожна відкрита підказка зменшує XP, а якщо вставити готовий
-розв'язок у редактор — задача отримує штраф як за три підказки і **обов'язково**
-йде в чергу повторень.
+**The solution is truly locked.** The third hint level unlocks after 10 minutes
+of active work on the task (20–25 for projects). Only focused time counts.
+Every opened hint costs XP, and pasting a ready solution into the editor
+penalises the task as three hints and **always** sends it to the review queue.
 
-**Повторення важливіші за проходження.** Тому в статистиці дві різні цифри:
-«здано» і «**утримано**» — задача, яку більше не треба повторювати. За успішні
-повторення нараховується окремий XP (чим довший інтервал витримав — тим більше),
-тож повертатися вигідно, а не нудно.
+**Reviews matter more than passes.** Stats track two different numbers:
+"passed" and "**retained**" — a task you no longer need to review. Successful
+reviews earn their own XP (the longer the survived interval, the more), so
+coming back pays off instead of boring you.
 
-**Згадка перевіряється холодом.** Коли задача вже здана, її легко «згадати»,
-просто впізнавши власний код. Тому є окремий режим — **холодне повторення**
-(`Ctrl+Shift+R`): випадкова здана задача відкривається із заготовки, без
-підказок і розв'язку, з таймером на 3–10 хвилин. Вердикт іде в ту саму чергу
-1/3/7/30: згадав сам — інтервал довший, не згадав — задача повертається завтра.
+**Recall is tested cold.** A solved task is easy to "recall" by recognising
+your own code. So there is a separate mode — **cold review** (`Ctrl+Shift+R`):
+a random solved task opens from its stub, no hints, no solution, with a 3–10
+minute timer. The verdict feeds the same 1/3/7/30 queue: recalled on your
+own — longer interval; didn't — back tomorrow.
 
-## Що вміє
+## Features
 
 | | |
 |---|---|
-| 🧭 **Шлях на 9 місяців** | 5 блоків (місяць 1 → 7–9), 108 задач, з них 80 уже можна розв'язувати. План живе в коді (`curriculum/`) і оновлює `Python-Roadmap.md` сам |
-| 🔁 **Дрили після кожного тижня** | 20 коротких вправ (5–12 хв) у місяці 1: одна навичка на вправу, перевірка на кількох входах — тому «вписати відповідь руками» не працює. Після тижня теорії план сам веде на тренування, поки навичка ще гаряча |
-| 🏆 **Задачі з LeetCode і Codewars** | 14 задач рівня 7 kyu – medium у міні-блоці місяців 3–4. Умови переказані українською, у кожної вказано джерело й посилання на оригінал |
-| ✍️ **Редактор коду** | Номери рядків, підсвітка синтаксису, автовідступ після `:`, Tab = 4 пробіли, `Ctrl+Enter` |
-| ✅ **Чесна перевірка** | Окремий процес, таймаут 5 с, ліміт виводу, фікстури `input()`, задачі з кількох файлів зі справжнім `import` |
-| 🔎 **Що перевірять — видно заздалегідь** | До запуску вкладка «Тести» показує список перевірок і що саме вони вимагають; код тестів лишається прихованим |
-| 🩺 **Помилки — людською мовою** | `NameError`, `TypeError`, `IndentationError` та ще 20 типів розжовані українською: що це означає, у якому рядку і що зробити |
-| ✍️ **Рев'ю коду** | Вкладка «Рев'ю» (`F6`) читає твій код через `ast` і каже, що в ньому важко читати: зайві змінні й імпорти, `range(len())`, `== None`, проковтнуті помилки, чотири поверхи `if`. Нічого не блокує і не зменшує XP |
-| 📖 **Міні-довідка з теми** | Вкладка «Довідка» сама підбирає шпаргалку під задачу: рядки, списки, словники, цикли, алгоритми, файли, JSON, SQLite, Git |
-| 💡 **Підказки без спойлерів** | «де шукати» → «яка конструкція» → розв'язок за таймером |
-| 🔁 **Повторення 1/3/7/30** | Завалені й «підглянуті» задачі повертаються; після четвертого повторення задача утримана |
-| ❄ **Холодне повторення** | Випадкова вже здана задача без підказок і розв'язку, з таймером до 10 хв. Спершу бере те, що вже в черзі; збережений код при цьому не затирається (`Ctrl+Shift+R`) |
-| 🗓 **Тижневий огляд** | Раз на тиждень — звіт із того, що вже в базі: скільки здано, на чому спіткнувся, які помилки закрито чисто, а які — з підказкою. Кнопка «зберегти звіт» кладе markdown-файл поруч із прогресом (`Ctrl+Shift+W`) |
-| 🩹 **Помилки закриваються, а не накопичуються** | Помилка «висить» у журналі, доки задачу не здано чистим проходом — без підказок і розв'язку. Здав із підказкою? Позначка «закрито з допомогою» лишається, і задача просить холодного повторення |
-| 📈 **Прогрес і слабкі місця** | XP, серія днів, відсоток успішних спроб, топ тем, де провалюєшся, календар активності на 8 тижнів |
-| 💾 **Нічого не губиться** | Код автозберігається, прогрес — у SQLite із `WAL` (запис не блокує читання), перед кожним запуском робиться копія бази (`backups/`, 7 останніх), а побитий файл бази не стирається, а відсувається вбік — `progress.json` поруч можна експортувати й перенести на інший комп'ютер |
-| 🎨 **Під очі й під настрій** | Темна й світла тема (`Ctrl+D`), масштаб тексту (меню «Вигляд»), вікно відкривається там, де ти його закрив |
-| 📦 **Працює без Python** | `PyInstaller` збирає один `PyTrainer.exe`; інтернет, права адміністратора й інсталятор не потрібні. Портативний режим (`--data-dir ТЕКА`) тримає прогрес у будь-якому місці — хоч на флешці (див. нижче) |
-| 📦 **Експорт для портфоліо** | «Файл → Експортувати розв'язані задачі» складає код у окремі `.py` + README |
+| 🧭 **9-month path** | 5 blocks (month 1 → 7–9), 108 tasks, 80 ready to solve. The plan lives in code (`curriculum/`) and updates `Python-Roadmap.md` itself |
+| 🔁 **Drills after every week** | 20 short exercises (5–12 min) in month 1: one skill per drill, checks on multiple inputs — so "typing the answer by hand" doesn't work. After a week of theory the plan walks you to training while the skill is still hot |
+| 🏆 **LeetCode and Codewars tasks** | 14 tasks from 7 kyu to medium in the months 3–4 mini-block. Statements retold in Ukrainian, each with its source and a link to the original |
+| ✍️ **Code editor** | Line numbers, syntax highlighting, auto-indent after `:`, Tab = 4 spaces, `Ctrl+Enter` |
+| ✅ **Honest checks** | Separate process, 5 s timeout, output cap, `input()` fixtures, multi-file tasks with a real `import` |
+| 🔎 **Checks are visible upfront** | Before a run, the "Tests" tab lists the checks and what they demand; the test code itself stays hidden |
+| 🩺 **Errors in human language** | `NameError`, `TypeError`, `IndentationError` and 20 more types explained in Ukrainian: what it means, which line, what to do |
+| ✍️ **Code review** | The "Review" tab (`F6`) reads your code via `ast` and tells you what is hard to read: dead variables and imports, `range(len())`, `== None`, swallowed exceptions, four floors of `if`. Blocks nothing, costs no XP |
+| 📖 **Mini-reference per topic** | The "Cheatsheet" tab auto-picks a reference for the task: strings, lists, dicts, loops, algorithms, files, JSON, SQLite, Git |
+| 💡 **Spoiler-free hints** | "where to look" → "which construct" → solution behind a timer |
+| 🔁 **1/3/7/30 repetition** | Failed and "peeked" tasks come back; after the fourth review the task is retained |
+| ❄ **Cold review** | A random solved task, no hints, no solution, timer up to 10 min. Picks queued tasks first; your saved code is not overwritten (`Ctrl+Shift+R`) |
+| 🗓 **Weekly digest** | Once a week — a report of what is actually in the database: solved count, where you stumbled, cleanly vs aided mistake closures. A "save report" button drops a markdown file next to your progress (`Ctrl+Shift+W`) |
+| 🩹 **Mistakes close, they don't pile up** | A mistake "hangs" in the journal until the task is passed cleanly — no hints, no solution. Passed with help? The "closed with help" mark stays, and the task asks for a cold review |
+| 📈 **Progress and weak spots** | XP, day streak, success rate, top failing topics, 8-week activity calendar |
+| 💾 **Nothing gets lost** | Code autosaves, progress lives in SQLite with `WAL` (writes never block reads), a database copy is made before every launch (`backups/`, last 7), and a corrupted database file is moved aside, never deleted — nearby `progress.json` can be exported and moved to another machine |
+| 🎨 **For your eyes and mood** | Dark and light theme (`Ctrl+D`), text scaling ("View" menu), the window reopens where you closed it |
+| 📦 **Runs without Python** | `PyInstaller` builds a single `PyTrainer.exe`; no internet, no admin rights, no installer needed. Portable mode (`--data-dir DIR`) keeps progress anywhere — even on a flash drive (see below) |
+| 📦 **Portfolio export** | "File → Export solved tasks" lays out code into separate `.py` files + README |
 
 <p align="center">
-  <img src="docs/images/02-checks.png" width="66%" alt="Перевірка прихованими тестами">
-  <img src="docs/images/03-progress.png" width="32%" alt="Прогрес і слабкі місця">
+  <img src="docs/images/02-checks.png" width="66%" alt="Hidden-test checks">
+  <img src="docs/images/03-progress.png" width="32%" alt="Progress and weak spots">
 </p>
 
 <p align="center">
-  <img src="docs/images/05-error-help.png" width="66%" alt="Пояснення помилки українською">
-  <img src="docs/images/06-cheatsheet.png" width="32%" alt="Міні-довідка з теми задачі">
+  <img src="docs/images/05-error-help.png" width="66%" alt="Error explained in Ukrainian">
+  <img src="docs/images/06-cheatsheet.png" width="32%" alt="Mini-reference for the task topic">
 </p>
 
 <p align="center">
-  <img src="docs/images/04-reviews.png" width="49%" alt="Черга повторень 1/3/7/30">
-  <img src="docs/images/07-light.png" width="49%" alt="Світла тема й масштаб тексту">
+  <img src="docs/images/04-reviews.png" width="49%" alt="1/3/7/30 review queue">
+  <img src="docs/images/07-light.png" width="49%" alt="Light theme and text scaling">
 </p>
 
 <p align="center">
-  <img src="docs/images/08-cold-review.png" width="66%" alt="Холодне повторення: здана задача без підказок і розв'язку">
+  <img src="docs/images/08-cold-review.png" width="66%" alt="Cold review: solved task with no hints or solution">
 </p>
 
 <p align="center">
-  <img src="docs/images/09-code-review.png" width="66%" alt="Рев'ю коду: розбір коду через ast">
+  <img src="docs/images/09-code-review.png" width="66%" alt="Code review: ast-based read of your code">
 </p>
 
 <p align="center">
-  <img src="docs/images/10-weekly-digest.png" width="66%" alt="Тижневий огляд: підсумок тижня й що робити далі">
+  <img src="docs/images/10-weekly-digest.png" width="66%" alt="Weekly digest: week summary and next steps">
 </p>
 
-## Швидкий старт
+## Quick start
 
-**Windows:** двічі клікни `start.bat` — він сам створить оточення й установить Qt.
+**Windows:** double-click `start.bat` — it creates the environment and installs Qt itself.
 
-Вручну, з будь-якої системи:
+Manually, on any system:
 
 ```bash
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt   # Windows
 .venv/bin/python -m pip install -r requirements.txt            # Linux/macOS
 
-.venv\Scripts\python.exe main.py        # або: python -m trainer
+.venv\Scripts\python.exe main.py        # or: python -m trainer
 ```
 
-**Хочеш подивитись, не чіпаючи свій прогрес?** Демо-режим працює на тимчасовій
-базі з готовим прогресом за кілька тижнів навчання:
+**Want a look without touching your progress?** Demo mode runs on a throwaway
+database with a few weeks of ready-made progress:
 
 ```bash
 .venv\Scripts\python.exe main.py --demo
 ```
 
-**Хочеш переконатися, що перевірка коду справді працює?** Є самоперевірка: вона
-запускає код із правильним розв'язком, зі зламаним і з `while True` — і каже, чи
-вердикт приходить. Це той самий тест, який CI проганяє всередині зібраного
-`.exe`: вікно малюється навіть тоді, коли запуск коду зламаний, тому перевіряти
-вікно марно.
+**Want proof the code checks really work?** There is a self-test: it runs code
+with the right solution, a broken one and `while True` — and reports whether
+the verdicts arrive. It is the same test CI runs inside the built `.exe`: the
+window draws even when code execution inside `.exe` is broken, so testing the
+window is pointless.
 
 ```bash
 .venv\Scripts\python.exe main.py --self-test
-.venv\Scripts\python.exe main.py --self-test звіт.json   # те саме, ще й у файл
+.venv\Scripts\python.exe main.py --self-test report.json   # same, plus a file
 ```
 
-## Гарячі клавіші
+## Hotkeys
 
-| Клавіші | Дія |
+| Keys | Action |
 |---|---|
-| `Ctrl+Enter` | запустити код |
-| `F5` | перевірити прихованими тестами |
-| `Ctrl+N` | наступна незавершена задача |
-| `F6` | розібрати свій код (рев'ю) |
-| `Ctrl+R` | черга повторень |
-| `Ctrl+Shift+R` | холодне повторення випадкової задачі |
-| `Ctrl+P` | прогрес і слабкі місця |
-| `Ctrl+Shift+W` | тижневий огляд |
-| `Ctrl+F` | пошук задачі у плані |
-| `Tab` / `Shift+Tab` | відступ / зменшити відступ |
-| `Ctrl+S` | зберегти код у файл |
+| `Ctrl+Enter` | run code |
+| `F5` | run hidden tests |
+| `Ctrl+N` | next unfinished task |
+| `F6` | review your code |
+| `Ctrl+R` | review queue |
+| `Ctrl+Shift+R` | cold review of a random task |
+| `Ctrl+P` | progress and weak spots |
+| `Ctrl+Shift+W` | weekly digest |
+| `Ctrl+F` | search tasks in the plan |
+| `Tab` / `Shift+Tab` | indent / outdent |
+| `Ctrl+S` | save code to a file |
 
-## Як додати свою задачу
+## Adding your own task
 
-Задачі — це дані, а не код інтерфейсу. Додай її у відповідну тему у `curriculum/`:
+Tasks are data, not UI code. Add one to the matching topic in `curriculum/`:
 
 ```python
 task(
@@ -157,284 +159,247 @@ task(
         hint("де шукати", "sum() і len() — твої друзі."),
         solution("def average(numbers):\n    return sum(numbers) / len(numbers) if numbers else None"),
     ],
-    # для задачі, узятої ззовні, — джерело й посилання на оригінал
+    # for a borrowed task — source and link to the original
     source="Two Sum · LeetCode #1",
     source_url="https://leetcode.com/problems/two-sum/",
-    # яку шпаргалку показати у вкладці «Довідка» (див. curriculum/cheatsheets.py)
+    # which cheatsheet to show in the Reference tab (see curriculum/cheatsheets.py)
     cheatsheet="dicts",
 )
 ```
 
-Потім `python -m unittest discover -s tests` — тести самі перевірять, що твій
-розв'язок проходить власні перевірки, а заготовка коду — ні.
+(Task titles and statements stay in Ukrainian — that is the product's language.)
 
-Короткі вправи-дрили (див. `curriculum/drills1.py`) описуються так само, лише
-дрібніше: 5–12 хвилин, одна навичка, 2–4 перевірки на різних входах.
+Then `python -m unittest discover -s tests` — the tests verify that your
+solution passes its own checks and the starter code does not.
 
-Задача може принести з собою файли, і тоді розв'язок може робити справжній
-`import utils` — як у справжньому проєкті (див. задачу `m2-module`).
+Short drill exercises (see `curriculum/drills1.py`) are described the same way,
+only smaller: 5–12 minutes, one skill, 2–4 checks on different inputs.
 
-## Як це працює
+A task may bring its own files, and then the solution can do a real
+`import utils` — like in a genuine project (see task `m2-module`).
+
+## How it works
 
 ```
-curriculum/        дані: місяці → теми → задачі (умова, заготовка, перевірки, підказки)
-    cheatsheets.py   міні-довідка: шпаргалки та автопідбір під тему задачі
-trainer/core/      ядро без інтерфейсу:
-    runner.py        запуск коду в окремому процесі + перевірки
-    errors.py        traceback → пояснення українською (що це і що робити)
-    session.py       правила навчання: XP, статуси, черга повторень
-    scoring.py       самі формули XP та інтервалів
-    review.py        холодне повторення: яку здану задачу дістати з пам'яті
-    db.py            SQLite: прогрес, спроби, підказки, час
-    stats.py         статистика по темах і пошук слабких місць
-trainer/ui/        інтерфейс на PySide6 (Qt 6): тема, редактор, панелі
-main.py            точка входу
-trainer/cli.py     вибір режиму: вікно, --exec-runner, --self-test
+curriculum/        data: months → topics → tasks (statement, starter, checks, hints)
+    cheatsheets.py   mini-reference: sheets and auto-pick per task topic
+trainer/core/      engine without UI:
+    runner.py        code runs in a separate process + checks
+    errors.py        traceback → explanation in Ukrainian (what and what to do)
+    session.py       learning rules: XP, statuses, review queue
+    scoring.py       the XP and interval formulas
+    review.py        cold review: which solved task to pull from memory
+    db.py            SQLite: progress, attempts, hints, time
+    stats.py         per-topic stats and weak-spot search
+trainer/ui/        PySide6 (Qt 6) interface: theme, editor, panels
+main.py            entry point
+trainer/cli.py     mode picker: window, --exec-runner, --self-test
 ```
 
-Три шари спілкуються тільки через дані: `curriculum` не знає про Qt, ядро не
-знає про інтерфейс. Тому правила навчання можна тестувати без вікна, а той самий
-код — використати в командному рядку чи вебверсії. Детальніше: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Three layers talk data only: `curriculum` knows nothing of Qt, the engine knows
+nothing of the UI. So learning rules are testable without a window, and the same
+code can drive a CLI or a web version. Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-**Безпека виконання коду.** Код користувача ніколи не виконується в процесі
-застосунку:
+**Code-execution safety.** User code never runs inside the app process:
 
-- окремий процес у тимчасовій папці. У зібраному `.exe` `sys.executable` — це
-  сам тренажер, а не Python, тому `.exe` запускає **сам себе** з прапорцем
-  `--exec-runner` і виконує файл своїм вбудованим інтерпретатором
+- a separate process in a temp folder. In the built `.exe` `sys.executable` is
+  the trainer itself, not Python, so `.exe` launches **itself** with
+  `--exec-runner` and runs the file with its embedded interpreter
   (`trainer/core/exec_runner.py`);
-- таймаут (5 с) — завислі цикли вбиваються разом з усіма нащадками;
-- ліміт виводу (64 КБ) — `print` у циклі не з'їсть пам'ять;
-- `stdin` підставляється як фікстура, тож `input()` не чекає на клавіатуру.
+- timeout (5 s) — hung loops are killed with all descendants;
+- output cap (64 KB) — a `print` loop eats no memory;
+- `stdin` comes from fixtures, so `input()` never waits for a keyboard.
 
-## Рев'ю коду
+## Code review
 
-Тести кажуть, чи код працює. Але код, який працює, — це ще не код, який
-зрозуміє інша людина, а на фрілансі читають саме код. Тому є вкладка «Рев'ю»
-(`F6`): вона розбирає те, що зараз у редакторі, через `ast` — вбудований
-розбір Python, жодних нових залежностей — і каже людською мовою, що саме
-заважає читати.
+Tests say whether code works. But working code is not yet code another human
+understands — and freelancers are read, not run. So there is a "Review" tab
+(`F6`): it parses whatever is in the editor via `ast` — builtin Python
+parsing, zero new dependencies — and tells you in plain language what hurts
+reading.
 
-| Що помічає | Приклад |
+| Pattern | Example |
 |---|---|
-| Змінна, яку ніхто не читає | `total = 0` і жодного `total` далі |
-| Імпорт, який нікуди не пішов | `import math` без жодного `math.` |
-| Обхід списку через індекси | `for i in range(len(items))` → `for item in items` |
-| Порівняння з `True` і `None` | `if value == None` → `if value is None` |
-| Проковтнута помилка | `except: pass` — баґ зникає разом із повідомленням |
-| Файл без `with` | `f = open(...)` → `with open(...) as f` |
-| Чотири поверхи `if`/`for` | внутрішній блок — у функцію з назвою |
-| Однакове число чи рядок 3+ разів | дати йому назву-константу |
-| Пара `return True` / `return False` | `return умова` |
-| Функція на 25+ рядків | розбити на кроки з назвами |
-| Імена не за домовленістю Python | `AvgOfMarks` → `avg_of_marks` |
+| Variable nobody reads | `total = 0` with no `total` below |
+| Import going nowhere | `import math` with no `math.` |
+| Index walk over a list | `for i in range(len(items))` → `for item in items` |
+| Comparing with `True` / `None` | `if value == None` → `if value is None` |
+| Swallowed error | `except: pass` — the bug vanishes with the message |
+| File without `with` | `f = open(...)` → `with open(...) as f` |
+| Four floors of `if`/`for` | inner block — into a named function |
+| Same number or string 3+ times | give it a constant name |
+| `return True` / `return False` pair | `return condition` |
+| 25+ line function | split into named steps |
+| Non-Pythonic names | `AvgOfMarks` → `avg_of_marks` |
 
-Три речі, якими цей розбір навмисно відрізняється від лінтингу:
+Three deliberate differences from linting:
 
-- **він нічого не забороняє.** Рев'ю не блокує здачу задачі й не зменшує XP:
-  його читають, а не здають;
-- **він знає про приховані перевірки.** Перевірки виконуються в тому ж файлі,
-  тому `from fake_api import BASE_URL` у мережевих задачах «не використовується»
-  в редакторі, але потрібен перевірці — розбір ці імена враховує, щоб не радити
-  видалити те, без чого задача перестане здаватись;
-- **він хвалить.** Якщо у функції є рядок документації або файл відкривається
-  через `with`, це показується окремою карткою: людина має бачити, який
-  прийом вона вже засвоїла, а не лише те, що зроблено не так.
+- **it forbids nothing.** Reviews never block a task and never cost XP: they
+  are read, not passed;
+- **it knows the hidden checks.** Checks run in the same file, so
+  `from fake_api import BASE_URL` in network tasks "goes unused" in the editor
+  but the check needs it — the review accounts for such names instead of
+  advising to delete what the task cannot pass without;
+- **it praises.** A docstring in a function or a file opened with `with` gets
+  its own card: you should see the trick you already learned, not only what
+  is wrong.
 
-Правила — це чистий код без Qt (`trainer/core/codereview.py`), тому кожне з
-них перевіряється тестами буквально рядком коду: і поганим (має спрацювати), і
-добрим (має промовчати). Заготовки задач курс не розбирає — доки людина нічого
-не написала, будь-яке зауваження було б докором за чужий код.
+Rules are pure Qt-free code (`trainer/core/codereview.py`), so each is tested
+literally line by line: a bad one (must fire) and a good one (must stay
+silent). The course never reviews task starters — until you wrote nothing,
+any remark would scold someone else's code.
 
-## Тижневий огляд
+## Weekly digest
 
-План на день відповідає на питання «що робити сьогодні». Але без другого
-питання — «і що з цього вийшло?» — навчання перетворюється на стрічку справ:
-задачі здаються, помилки накопичуються, а чи стало легше, не видно нізвідки.
-Тому раз на тиждень тренажер складає огляд (`Ctrl+Shift+W`, меню «Навчання» або
-кнопка на сторінці «Прогрес»).
+The day plan answers "what to do today". But without the second question —
+"and what came of it?" — learning turns into a todo ribbon: tasks get passed,
+mistakes pile up, and whether it got easier is nowhere to see. So once a week
+the trainer compiles a digest (`Ctrl+Shift+W`, "Study" menu or the button on
+the "Progress" page).
 
-Усередині — ті самі дані, але прочитані разом, а не порізно: скільки здано
-й перевірено, скільки днів було з роботою, найважчі задачі тижня, стани
-помилок, слабкі теми й **три конкретні наступні кроки** (що повторити, яку
-тему підтягнути, яку нову задачу відкрити). Внизу — вердикт одним реченням:
-порожній тиждень, рваний тиждень або «закрито чисто».
+Inside — the same data, read together instead of apart: solved and checked
+counts, active days, hardest tasks of the week, mistake states, weak topics
+and **three concrete next steps** (what to review, which topic to pull up,
+which new task to open). At the bottom — a one-line verdict: empty week,
+ragged week or "closed clean".
 
-**Помилка закривається тільки чистим проходом.** У журналі тепер три стани:
+**A mistake closes only on a clean pass.** The journal now has three states:
 
-| Стан | Що сталося | Що це означає |
+| State | What happened | What it means |
 |---|---|---|
-| відкрито | після останньої помилки чистого проходу не було | треба повернутися до задачі |
-| закрито з допомогою | здав, але з підказкою або вставленим розв'язком | працює — але згадай холодним повторенням |
-| закрито | здав сам, без підказок і без розв'язку | помилки більше немає |
+| open | no clean pass since the last mistake | go back to the task |
+| closed with help | passed, but with a hint or a pasted solution | works — but recall it cold |
+| closed | passed alone, no hints, no solution | the mistake is gone |
 
-Середній стан — найважливіший. Якщо вважати «закрито» будь-яке здавання, то
-список помилок перетворюється на історію страждань, яку привчишся ігнорувати.
-Якщо рахувати закритим лише чисте здавання, старий `NameError` висить вічно
-навіть тоді, коли все давно працює. «Закрито з допомогою» — чесно посередині, і
-веде прямо в холодне повторення.
+The middle state matters most. Counting every pass as "closed" turns the list
+into a history of suffering you learn to ignore. Counting only clean passes
+leaves an old `NameError` hanging forever after everything already works.
+"Closed with help" is honestly in between — and points straight at a cold
+review.
 
-Звіт можна зберегти markdown-файлом (`pytrainer-week-<дата>.md`): за місяць
-цифри в тренажері вже інші, а перечитати, як пройшов той тиждень, корисно.
-Рахує все `trainer/core/digest.py` і `trainer/core/mistakes.py` — без Qt, тому
-кожен стан і кожне речення вердикту перевіряються тестами, а той самий звіт
-можна надрукувати в консоль.
+The report can be saved as a markdown file (`pytrainer-week-<date>.md`): in a
+month the trainer's numbers are different, and rereading that week helps.
+`trainer/core/digest.py` and `trainer/core/mistakes.py` compute everything —
+no Qt, so every state and every verdict sentence is tested, and the same
+report can be printed to a console.
 
-## Тести
+## Tests
 
 ```bash
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-464 тести: ядро перевірки, пояснювач помилок, база й копії, правила XP
-та повторень, холодне повторення, розбір коду, журнал помилок і тижневий
-огляд, план, довідка, теми й інтерфейс
-(він теж запускається без екрана).
-Найцінніший —
-`test_curriculum.py`: він
-прогоняє **кожен розв'язок** проти перевірок його ж задачі й окремо перевіряє,
-що заготовка коду **не** проходить. Зламану задачу неможливо непомітно
-додати в план. Усе це ганяється в CI на Python 3.11 і 3.13.
+464 tests: check engine, error explainer, database and copies, XP rules
+and repetition, cold review, code review, mistake journal and weekly
+digest, plan, reference, themes and interface
+(it also launches headless).
+Most valuable —
+`test_curriculum.py`: it runs
+**every solution** against its own task's checks and separately verifies
+that starter code does **not** pass. A broken task cannot slip into the
+plan unnoticed. CI runs all of it on Python 3.11 and 3.13.
 
-Покриття міряється в CI (`coverage`) і падає, якщо опуститься нижче 90% — без
-порога ця цифра перетворюється на прикрасу.
+Coverage is measured in CI (`coverage`) and fails below 90% — without
+the gate the number would turn decorative.
 
-## Збірка `.exe` (щоб не ставити Python)
+## Building `.exe` (no Python needed)
 
-Найпростіший шлях для того, кому ти даєш тренажер:
+Easiest path for whoever you hand the trainer to:
 
 ```bash
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .venv\Scripts\python.exe tools\build_exe.py
 ```
 
-У теку `dist/` ляжуть `PyTrainer.exe`, README і коротка інструкція. Один із CI
-збирає той самий `.exe` на кожен push і робить із ним дві речі: запускає без
-екрана (`--demo --screenshot`), щоб перевірити, що він стартує, і просить
-виконати справжню задачу з перевірками (`--self-test`). Друге важливіше: вікно
-відкривається й тоді, коли запуск коду в зібраному `.exe` зламаний — саме так
-одного разу й сталося, і жоден тест з коду цього не побачив.
+`dist/` gets `PyTrainer.exe`, README and a short manual. One CI job builds
+the same `.exe` on every push and does two things with it: launches it
+headless (`--demo --screenshot`) to prove it starts, and asks it to run a real
+task with checks (`--self-test`). The second matters more: the window draws
+even when code execution inside the built `.exe` is broken — exactly what
+happened once, and no code test caught it.
 
-Готовий архів віддається в реліз на теґ `v*`.
+The ready archive ships in a release on tag `v*`.
 
 ```bash
-git tag v0.2.0 && git push --tags   # CI збере .exe і створить реліз
+git tag v0.2.0 && git push --tags   # CI builds .exe and creates the release
 ```
 
-**Як поставити собі (зі ярликом на робочому столі).** `--install` кладе
-`.exe` поруч із проєктом — туди, де вже лежить прогрес, тому запуск із коду й
-запуск `.exe` бачать **одну й ту саму базу**, і прогрес не роздвоюється:
+**Installing for yourself (with a desktop shortcut).** `--install` puts
+`.exe` next to the project — where progress already lives, so launches from
+code and from `.exe` see **one and the same database**, and progress never
+forks:
 
 ```bash
 .venv\Scripts\python.exe tools/build_exe.py --install
 .venv\Scripts\python.exe tools/make_shortcut.py
 ```
 
-Друга команда створює `PyTrainer.lnk` на робочому столі з тією ж іконкою, що
-в застосунку. Ярлик тримає всередині шлях, тому після переносу теки його
-досить створити заново цією ж командою — саме для цього вона окремий скрипт.
+The second command creates `PyTrainer.lnk` on the desktop with the app's icon.
+The shortcut holds a path inside, so after moving the folder just recreate it
+with the same command — that is why it is a separate script.
 
-Специфікація (`pytrainer.spec`) навмисне викидає зайві модулі Qt — без цього
-однофайловий `.exe` важить у кілька разів більше, хоча користується лише
-`QtCore`, `QtGui` та `QtWidgets`.
+The spec (`pytrainer.spec`) deliberately drops unused Qt modules — without that
+a one-file `.exe` weighs several times more while only using `QtCore`,
+`QtGui` and `QtWidgets`.
 
-**Важливо:** зібраний `.exe` пише прогрес **поруч із собою**, а не в теку
-розпакування — інакше після кожного закриття весь прогрес зникав би
-(див. `trainer/paths.py`).
+**Important:** the built `.exe` writes progress **next to itself**, not into
+the unpack folder — otherwise every quit would wipe all progress
+(see `trainer/paths.py`).
 
-## Дані
+## Data
 
-| Файл | Що це |
+| File | What it is |
 |---|---|
-| `pytrainer.db` | твій прогрес (SQLite, створюється сам). Лежить **не поруч із .exe**, а в службовій теці системи: `%LOCALAPPDATA%\PyTrainer` (Windows) або `~/.local/share/PyTrainer`. Хмари (OneDrive, Dropbox) читають файл тоді, коли їм захочеться, і можуть зробити це посеред запису — саме так і псуються бази SQLite. Відкрити теку — меню «Файл → Відкрити теку з даними» |
-| `backups/` | тихі копії бази перед кожним запуском, лишаються останні 7 (у тій самій теці даних) |
-| `pytrainer.lock` | замок запуску: друге вікно на тій самій базі не відкривається, бо два вікна затирали б одне одного |
-| `pytrainer.ini` | стан вікна й вигляд: тема, масштаб тексту, яка задача була відкрита |
-| `progress.json` | той самий прогрес у читабельному вигляді — його можна тримати в Git і переносити між машинами |
-| `Python-Roadmap.md` | генерований роадмап: галочки ставляться самі, коли ти здаєш задачу |
+| `pytrainer.db` | your progress (SQLite, self-created). Lives **not next to .exe** but in the system service folder: `%LOCALAPPDATA%\PyTrainer` (Windows) or `~/.local/share/PyTrainer`. Clouds (OneDrive, Dropbox) read the file whenever they feel like it, possibly mid-write — that is exactly how SQLite bases rot. Open the folder via "File → Open data folder" |
+| `backups/` | silent database copies before every launch, last 7 kept (same data folder) |
+| `pytrainer.lock` | launch lock: no second window on the same base, two windows would overwrite each other |
+| `pytrainer.ini` | window state and look: theme, text scale, open task |
+| `progress.json` | the same progress, human-readable — keep it in Git, move it between machines |
+| `Python-Roadmap.md` | generated roadmap: checkboxes tick themselves as you pass tasks |
 
-Ручні правки в `Python-Roadmap.md` перезапишуться: власні нотатки веди тут, у README.
+Hand edits to `Python-Roadmap.md` get overwritten: keep personal notes here, in README.
 
-Коли база переїхала, застосунок не витирає стару, а відсуває її вбік — поруч
-зʼявляється `pytrainer.db.moved` (і `backups.moved/`, якщо були копії). Це чесна
-страховка: переконайся, що прогрес на місці, і видаляй — на новому місці вже
-лежить копія.
+When the database moved, the app does not wipe the old file — it slides it
+aside: `pytrainer.db.moved` appears nearby (plus `backups.moved/` with copies).
+Honest insurance: check progress is in place, then delete — the new spot
+already holds a copy.
 
-**Потрібно все в одній теці** — на флешці, у шкільному кабінеті, без
-службових тек? Запусти застосунок із прапорцем `--data-dir ТЕКА`:
+**Need everything in one folder** — a flash drive, a classroom, no service
+folders? Launch with `--data-dir DIR`:
 
 ```bash
 PyTrainer.exe --data-dir D:\\PyTrainer
-.venv\\Scripts\\python.exe main.py --data-dir D:\\PyTrainer   # те саме з коду
+.venv\\Scripts\\python.exe main.py --data-dir D:\\PyTrainer   # same from code
 ```
 
-База, копії й замок ляжуть у цю теку, і весь прогрес можна носити з собою.
-Якщо в теці лежить база від старої версії — застосунок перенесе її сам і
-перейменує старий файл у `pytrainer.db.moved`, щоб нічого не зникло тихо.
+Database, copies and lock land in that folder — the whole progress travels.
+A database from an older version found there migrates itself and renames the
+old file to `pytrainer.db.moved`, so nothing vanishes silently.
 
-## Правила, які закладені в застосунок
+## Built-in learning rules
 
-1. **Місяці 1–2 — ШІ тільки як учитель.** Питай «поясни, чому не працює», а не
-   «напиши за мене». Тому розв'язок і заблоковано за таймером.
-2. **Місяць 3+ — правило 20–30 хвилин.** Спершу сам, потім ШІ.
-3. **Повторення — частина роботи, а не покарання.** Саме тому за них дають XP.
-4. **Згадка, а не впізнавання.** Холодне повторення прибирає підказки й
-   розв'язок: упізнати власний код легко, згадати його — ні.
+1. **Months 1–2 — AI as teacher only.** Ask "explain why it fails", never
+   "write it for me". That is why the solution sits behind a timer.
+2. **Month 3+ — the 20–30 minute rule.** Yourself first, AI second.
+3. **Repetition is work, not punishment.** That is why it earns XP.
+4. **Recall, not recognition.** Cold review removes hints and the solution:
+   recognising your own code is easy, recalling it is not.
 
-## У цифрах
+## By the numbers
 
 | | |
 |---|---|
-| Задач у плані | 108 (80 готові, решта — позначки майбутніх місяців) |
-| Готового матеріалу | ~18 годин за оцінками задач; місяць 1 закритий повністю, далі матеріал дописується на 2–3 тижні вперед, а не вигадується наперед |
-| Тестів | 464, з них найцінніший прогонить кожен розв'язок проти його ж перевірок (за цифрою в README стежить сам тест) |
-| Покриття | ~95%, у CI стоїть порог 90% |
-| Зовнішніх залежностей | 1 (PySide6); усе інше — стандартна бібліотека й SQLite |
-| Цикл повторень | 1 → 3 → 7 → 30 днів |
-
-## In English
-
-**PyTrainer** is a desktop Python trainer (PySide6 / Qt 6, Ukrainian UI) built
-for one goal: making it impossible to fool yourself into thinking you can code.
-
-- You write code in a built-in editor and press `F5`; the program runs it **for
-  real** — in a separate process, with a 5-second timeout, a 64 KB output cap
-  and `stdin` fixtures so `input()` never hangs.
-- Checks assert on behaviour (function results, what the program printed for a
-  given input), not on how your answer looks.
-- The full solution stays locked behind a 10-minute timer of **active** work
-  (20–25 for projects). Every hint costs XP; pasting the solution also forces the
-  task into the review queue.
-- Spaced repetition at 1/3/7/30 days, with separate "passed" and "retained"
-  counters and XP for successful reviews.
-- **Cold review** (`Ctrl+Shift+R`): a random already-solved task opens from its
-  stub with hints and the solution locked, a 3–10 minute countdown, and the
-  verdict feeding the very same 1/3/7/30 queue.
-- **Code review tab** (`F6`): an `ast`-based read of your own code — unused
-  names and imports, `range(len())`, `== None`, swallowed exceptions, files
-  without `with`, deep nesting, repeated literals, snake_case — plus a praise
-  card for what is already done well. It never blocks a task, never costs XP,
-  and it knows the names the hidden checks need.
-- **Mistakes close, they don't pile up**: an entry leaves the journal only after
-  a *clean* pass (no hints, no pasted solution). A helped pass stays visible as
-  "closed with help" and asks for a cold review.
-- **Weekly digest** (`Ctrl+Shift+W`): what actually happened in the last seven
-  days — solved tasks, checks, hardest tasks, mistake states, weak topics and
-  the next three concrete steps, with a markdown report you can save.
-- Error messages, hints and the cheat-sheet tab explain things in Ukrainian;
-  algorithmic tasks credit their source (LeetCode, Codewars, official docs).
-- One external dependency (`PySide6`); everything else is the standard library.
-
-```bash
-python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python main.py          # add --demo to try it without touching your progress
-.venv/bin/python -m unittest discover -s tests
-```
+| Tasks in the plan | 108 (80 ready to solve, the rest — future-month stubs) |
+| Ready material | ~18 hours by task estimates; month 1 fully closed, further material is written 2–3 weeks ahead, never invented upfront |
+| Tests | 464, the most valuable runs every solution against its own checks (a test itself watches the number in this README) |
+| Coverage | ~95%, CI gate at 90% |
+| External dependencies | 1 (PySide6); everything else is the standard library plus SQLite |
+| Review cycle | 1 → 3 → 7 → 30 days |
 
 Architecture: data in `curriculum/`, learning rules and code execution in
 `trainer/core/` (no Qt), UI in `trainer/ui/` — so the logic is testable without a
 window. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). MIT licensed.
 
-## Ліцензія
+## License
 
-MIT — користуйся, змінюй, використовуй у своїх проєктах.
+MIT — use it, change it, ship it in your projects.
