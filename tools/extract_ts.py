@@ -15,6 +15,10 @@ with a warning; f-strings are refused on purpose: wrap the literal, then
 `.format()` it.
 
     .venv\\Scripts\\python.exe tools/extract_ts.py   # writes i18n/pytrainer_en.ts
+
+NOTE: the pyside6-lupdate/lrelease shims in .venv\\Scripts are dead weight.
+Use the real binaries inside the package, e.g.:
+    $py (venv) → import PySide6, os → $p\\lrelease.exe i18n/pytrainer_en.ts
 """
 
 from __future__ import annotations
