@@ -1,10 +1,10 @@
-"""Вікно «Тижневий огляд»: сім днів навчання, прочитані за дві хвилини.
+"""The "Тижневий огляд" ("Weekly digest") window: seven study days read in two minutes.
 
-Щоденний план відповідає на питання «що робити сьогодні». Раз на тиждень
-потрібне інше питання: «і що з цього вийшло?». Вікно нічого не рахує само —
-усе вже є в `core/digest.py`; тут лише розкладка, щоб числа не доводилося
-шукати по різних сторінках, і кнопка «зберегти», бо звіт читають і через
-місяць, коли програма вже показує зовсім інші цифри.
+The day plan answers "what to do today". Once a week a different question is
+needed: "and what came of it?". The window computes nothing itself — it is
+all in `core/digest.py`; here is just layout, so numbers never have to be
+hunted across pages, plus a "save" button, since the report is reread a month
+later when the program already shows quite different numbers.
 """
 
 from __future__ import annotations
@@ -36,13 +36,13 @@ TASK_ROLE = Qt.ItemDataRole.UserRole
 
 
 class DigestDialog(QDialog):
-    """Тижневий огляд: вердикт, числа, списки й кнопка «зберегти звіт»."""
+    """Weekly digest: verdict, numbers, lists and a "save report" button."""
 
-    task_selected = Signal(str)          # натиснули на задачу в списку
+    task_selected = Signal(str)          # a task in the list was clicked
 
     def __init__(self, digest: WeeklyDigest, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Тижневий огляд")
+        self.setWindowTitle(self.tr("Тижневий огляд"))
         self.resize(580, 760)
         self._digest = digest
 
@@ -55,8 +55,8 @@ class DigestDialog(QDialog):
         box.addWidget(self.title)
 
         subtitle = QLabel(
-            "Огляд складається сам: із журналу спроб, черги повторень і журналу "
-            "помилок. Це не оцінка, а відповідь на питання «що робити далі»."
+            self.tr("Огляд складається сам: із журналу спроб, черги повторень і журналу "
+                    "помилок. Це не оцінка, а відповідь на питання «що робити далі».")
         )
         subtitle.setObjectName("Subtle")
         subtitle.setWordWrap(True)
@@ -70,35 +70,35 @@ class DigestDialog(QDialog):
         grid.setSpacing(6)
         self.cards: dict[str, QLabel] = {}
         for index, (key, caption) in enumerate((
-            ("solved", "здано нових"),
-            ("checks", "перевірок"),
-            ("passes", "успішних"),
-            ("days", f"днів із {DAYS}"),
-            ("streak", "серія днів"),
-            ("xp", "XP загалом"),
+            ("solved", self.tr("здано нових")),
+            ("checks", self.tr("перевірок")),
+            ("passes", self.tr("успішних")),
+            ("days", self.tr("днів із {n}").format(n=DAYS)),
+            ("streak", self.tr("серія днів")),
+            ("xp", self.tr("XP загалом")),
         )):
             value, card = self._card("—", caption)
             self.cards[key] = value
             grid.addWidget(card, index // 3, index % 3)
         box.addLayout(grid)
 
-        self.solved_list = self._section(box, "ЩО ЗДАНО")
-        self.hardest_list = self._section(box, "НАЙВАЖЧЕ")
-        self.mistakes_list = self._section(box, "ПОМИЛКИ")
-        self.actions_list = self._section(box, "ЩО РОБИТИ ДАЛІ")
+        self.solved_list = self._section(box, self.tr("ЩО ЗДАНО"))
+        self.hardest_list = self._section(box, self.tr("НАЙВАЖЧЕ"))
+        self.mistakes_list = self._section(box, self.tr("ПОМИЛКИ"))
+        self.actions_list = self._section(box, self.tr("ЩО РОБИТИ ДАЛІ"))
 
         for widget in (self.solved_list, self.hardest_list,
                        self.mistakes_list, self.actions_list):
             widget.itemClicked.connect(self._on_clicked)
 
         buttons = QHBoxLayout()
-        self.save_button = QPushButton("Зберегти звіт…")
+        self.save_button = QPushButton(self.tr("Зберегти звіт…"))
         self.save_button.setObjectName("Ghost")
         self.save_button.setToolTip(
-            "Markdown-файл — його можна перечитати через місяць, коли цифри "
-            "в тренажері вже інші"
+            self.tr("Markdown-файл — його можна перечитати через місяць, коли цифри "
+                    "в тренажері вже інші")
         )
-        # Аргумент у слоті не потрібен: clicked передає checked, а він зайвий.
+        # No slot argument needed: clicked passes checked, which is excess.
         self.save_button.clicked.connect(lambda _=False: self.save_report())
         buttons.addWidget(self.save_button)
 
@@ -106,14 +106,14 @@ class DigestDialog(QDialog):
         self.saved_note.setObjectName("Subtle")
         buttons.addWidget(self.saved_note, 1)
 
-        self.close_button = QPushButton("Закрити")
+        self.close_button = QPushButton(self.tr("Закрити"))
         self.close_button.clicked.connect(self.close)
         buttons.addWidget(self.close_button)
         box.addLayout(buttons)
 
         self.set_digest(digest)
 
-    # ---------- побудова ----------
+    # ---------- building ----------
 
     def _card(self, value: str, caption: str) -> tuple[QLabel, QFrame]:
         frame = QFrame()
@@ -141,10 +141,10 @@ class DigestDialog(QDialog):
         box.addWidget(widget)
         return widget
 
-    # ---------- дані ----------
+    # ---------- data ----------
 
     def set_digest(self, digest: WeeklyDigest) -> None:
-        """Малює огляд. Викликається і після кожної перевірки, якщо вікно відкрите."""
+        """Draws the digest. Also called after every check if the window is open."""
         self._digest = digest
         self.title.setText(digest.title)
         self.verdict.setText(digest.verdict)
@@ -161,13 +161,14 @@ class DigestDialog(QDialog):
             self.solved_list,
             [(f"✓  {title}", task_id, Colors.success)
              for task_id, title in digest.solved],
-            "Нічого — і це нормально, якщо тиждень був важкий.",
+            self.tr("Нічого — і це нормально, якщо тиждень був важкий."),
         )
         self._fill(
             self.hardest_list,
-            [(f"⚠  {title} — {count} провалів", task_id, Colors.warn)
+            [(self.tr("⚠  {title} — {n} провалів").format(title=title, n=count),
+              task_id, Colors.warn)
              for task_id, title, count in digest.hardest],
-            "Провалів не було.",
+            self.tr("Провалів не було."),
         )
         self._fill(
             self.mistakes_list,
@@ -175,27 +176,29 @@ class DigestDialog(QDialog):
               f"{state.times}× · {state.label}", state.task_id,
               Colors.error if state.is_open else Colors.warn)
              for state in digest.mistakes],
-            "За тиждень жодної помилки в журналі.",
+            self.tr("За тиждень жодної помилки в журналі."),
         )
-        self._fill(self.actions_list, self._actions(), "Усе зроблено 🎉")
+        self._fill(self.actions_list, self._actions(), self.tr("Усе зроблено 🎉"))
 
     def _actions(self) -> list[tuple[str, str | None, str]]:
-        """Що робити далі — тим самим порядком, що й у плані на день."""
+        """What to do next — same order as the day plan."""
         rows: list[tuple[str, str | None, str]] = []
         if self._digest.reviews_due:
             rows.append((
-                f"↻  Повторити: {self._digest.reviews_due} задач — вони вже "
-                "в черзі повторень",
+                self.tr("↻  Повторити: {n} задач — вони вже в черзі повторень").format(
+                    n=self._digest.reviews_due),
                 None, Colors.warn,
             ))
         if self._digest.weak_pick:
             topic = f" «{self._digest.weak_topic}»" if self._digest.weak_topic else ""
             rows.append((
-                f"⚠  Слабка тема{topic}: {self._digest.weak_pick[1]}",
+                self.tr("⚠  Слабка тема{topic}: {pick}").format(
+                    topic=topic, pick=self._digest.weak_pick[1]),
                 self._digest.weak_pick[0], Colors.error,
             ))
         for task_id, title in self._digest.next_tasks:
-            rows.append((f"→  Нова задача: {title}", task_id, Colors.success))
+            rows.append((self.tr("→  Нова задача: {title}").format(title=title),
+                         task_id, Colors.success))
         return rows
 
     @staticmethod
@@ -218,18 +221,18 @@ class DigestDialog(QDialog):
             item.setForeground(QColor(colour))
             if task_id:
                 item.setData(TASK_ROLE, task_id)
-                item.setToolTip("Натисни, щоб відкрити задачу")
+                item.setToolTip(self.tr("Натисни, щоб відкрити задачу"))
             widget.addItem(item)
 
     def _paint_verdict(self) -> None:
-        """Колір вердикту задає тему, а не віджет — інакше Ctrl+D лишав би старий."""
+        """The verdict colour is set by the theme, not the widget — else Ctrl+D left it stale."""
         kind = "Good" if self._digest.active and not self._digest.open_mistakes \
             else "Warn"
         self.verdict.setObjectName(kind)
         self.verdict.style().unpolish(self.verdict)
         self.verdict.style().polish(self.verdict)
 
-    # ---------- дії ----------
+    # ---------- actions ----------
 
     def _on_clicked(self, item: QListWidgetItem) -> None:
         task_id = item.data(TASK_ROLE)
@@ -241,14 +244,14 @@ class DigestDialog(QDialog):
     def save_report(self) -> None:
         suggested = f"pytrainer-week-{self._digest.start}.md"
         path, _ = QFileDialog.getSaveFileName(
-            self, "Зберегти тижневий звіт", suggested, "Markdown (*.md)"
+            self, self.tr("Зберегти тижневий звіт"), suggested, "Markdown (*.md)"
         )
         if not path:
             return
         try:
             write_digest(path, self._digest, generated=datetime.now())
         except OSError as error:
-            QMessageBox.warning(self, "Не вдалося зберегти",
-                                f"Файл не записався.\n\n{error}")
+            QMessageBox.warning(self, self.tr("Не вдалося зберегти"),
+                                self.tr("Файл не записався.\n\n{err}").format(err=error))
             return
-        self.saved_note.setText(f"Збережено: {Path(path).name}")
+        self.saved_note.setText(self.tr("Збережено: {name}").format(name=Path(path).name))

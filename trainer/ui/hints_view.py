@@ -1,7 +1,7 @@
-"""Вкладка «Підказки»: блоки підказок, замок розв'язку, таймер, XP-передпоказ.
+"""The "Підказки" ("Hints") tab: hint blocks, solution lock, timer, XP preview.
 
-Витягнуто з `TaskPanel` (зріз 5 розпилу, модуль 3). Контролер тримає
-вказівник на панель (`p`) — стан підказок лишається у панелі.
+Extracted from `TaskPanel` (split slice 5, module 3). The controller holds a
+pointer to the panel (`p`) — hint state stays in the panel.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ def format_time(seconds: float) -> str:
 
 
 class HintsView:
-    """Рендер вкладки підказок і лічильника активної роботи."""
+    """Hints-tab renderer and active-work counter."""
 
     def __init__(self, panel: TaskPanel) -> None:
         self.p = panel
@@ -47,7 +47,7 @@ class HintsView:
         box.setSpacing(6)
 
         button = QPushButton(
-            "Зняти позначку" if done else "Позначити виконаним"
+            _tr("Зняти позначку") if done else _tr("Позначити виконаним")
         )
         button.setObjectName("Ghost")
         button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -81,7 +81,7 @@ class HintsView:
         button.setCheckable(True)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-        button.setText(f"Підказка {index} · {hint.title}")
+        button.setText(_tr("Підказка {n} · {title}").format(n=index, title=hint.title))
         button.setStyleSheet(
             "QToolButton { text-align: left; padding: 9px 12px; border-radius: 8px; "
             f"background: {Colors.elevated}; border: 1px solid {Colors.border}; "
@@ -108,7 +108,7 @@ class HintsView:
         note.setVisible(bool(hint.solution))
         box.addWidget(note)
 
-        use_button = QPushButton("Вставити розв'язок у редактор")
+        use_button = QPushButton(_tr("Вставити розв'язок у редактор"))
         use_button.setObjectName("Ghost")
         use_button.setCursor(Qt.CursorShape.PointingHandCursor)
         use_button.setVisible(False)
@@ -133,8 +133,8 @@ class HintsView:
 
         button.toggled.connect(toggled)
 
-        # уже відкриті підказки лишаються відкритими між сесіями — але не під
-        # час холодного повторення: там усе закрито за задумом
+        # Opened hints stay open across sessions — but not during a cold
+        # review: everything is closed there by design
         if index <= hints_used and not hint.solution and not p._locked:
             button.setChecked(True)
         return block, widgets
@@ -153,17 +153,18 @@ class HintsView:
         for widgets in p._hint_widgets:
             hint = widgets["hint"]
             if not hint.solution:
-                # підказка-орієнтир: пояснення під нею потрібне лише колись
+                # a guiding hint: the note under it matters only sometimes
                 widgets["note"].setVisible(False)
                 continue
             button = widgets["button"]
             note = widgets["note"]
             if left <= 0:
                 button.setEnabled(True)
-                button.setText(f'Підказка {widgets["index"]} · {hint.title}')
+                button.setText(_tr("Підказка {n} · {title}").format(
+                    n=widgets["index"], title=hint.title))
                 note.setText(
-                    "Розв'язок відкрито після достатньої роботи над задачею. "
-                    "Подивись — і спробуй переписати код своїми руками."
+                    _tr("Розв'язок відкрито після достатньої роботи над задачею. "
+                        "Подивись — і спробуй переписати код своїми руками.")
                 )
                 widgets["use_button"].setVisible(True)
             else:
@@ -172,26 +173,29 @@ class HintsView:
                 button.setChecked(False)
                 widgets["text"].setVisible(False)
                 button.setText(
-                    f'Підказка {widgets["index"]} · розв\'язок — заблоковано'
+                    _tr("Підказка {n} · розв'язок — заблоковано").format(
+                        n=widgets["index"])
                 )
                 note.setText(
-                    f"Відкриється через {format_time(left)} активної роботи над "
-                    f"задачею (з {p._task.minutes} хв). Працювало: "
-                    f"{format_time(p._active_seconds)}."
+                    _tr("Відкриється через {left} активної роботи над "
+                        "задачею (з {total} хв). Працювало: {done}.").format(
+                            left=format_time(left), total=p._task.minutes,
+                            done=format_time(p._active_seconds))
                 )
 
     def lock_everything(self) -> None:
-        """Холодне повторення: жодна підказка не відкривається, розв'язок теж.
+        """Cold review: no hint opens, neither does the solution.
 
-        Перевірки при цьому лишаються доступними: людина має здати задачу
-        так, як згадала, і вже вердикт скаже, чи справді пам'ятає.
+        Checks stay available: the human must pass the task as recalled, and
+        the verdict will tell whether memory is real.
         """
         for widgets in self.p._hint_widgets:
             button = widgets["button"]
             button.setChecked(False)
             button.setEnabled(False)
             button.setText(
-                f'Підказка {widgets["index"]} · недоступна в холодному повторенні'
+                _tr("Підказка {n} · недоступна в холодному повторенні").format(
+                    n=widgets["index"])
             )
             widgets["text"].setVisible(False)
             widgets["use_button"].setVisible(False)
@@ -200,12 +204,12 @@ class HintsView:
             note.setVisible(True)
             if widgets["hint"].solution:
                 note.setText(
-                    "Розв'язок повернеться, щойно завершиш холодне повторення."
+                    _tr("Розв'язок повернеться, щойно завершиш холодне повторення.")
                 )
             else:
                 note.setText(
-                    "Холодне повторення: спершу згадай сам. Підказки "
-                    "повернуться після спроби."
+                    _tr("Холодне повторення: спершу згадай сам. Підказки "
+                        "повернуться після спроби.")
                 )
 
     def refresh_xp(self, xp_preview: int | None, hints_used: int) -> None:
@@ -215,38 +219,38 @@ class HintsView:
             return
         parts = []
         if xp_preview is not None:
-            parts.append(f"Здаси зараз — отримаєш {xp_preview} XP")
-        # базу показуємо лише тоді, коли вона відрізняється від поточної —
-        # інакше рядок просто повторює сам себе
+            parts.append(_tr("Здаси зараз — отримаєш {n} XP").format(n=xp_preview))
+        # the base shows only when it differs from the current —
+        # otherwise the line just repeats itself
         if xp_preview is None or xp_preview != p._task.base_xp:
-            parts.append(f"база {p._task.base_xp} XP")
+            parts.append(_tr("база {n} XP").format(n=p._task.base_xp))
         if hints_used:
-            parts.append(f"підказок відкрито: {hints_used}")
+            parts.append(_tr("підказок відкрито: {n}").format(n=hints_used))
         p.xp_label.setText(" · ".join(parts))
 
     @property
     def locked(self) -> bool:
-        """Чи це холодне повторення (підказки й розв'язок вимкнено)."""
+        """Whether this is a cold review (hints and solution off)."""
         return self.p._locked
 
     def set_locked(self, locked: bool) -> None:
-        """Вмикає/вимикає холодне повторення в панелі підказок."""
+        """Switches cold review on/off in the hints panel."""
         from .task_panel import TAB_HINTS
 
         p = self.p
         p._locked = bool(locked)
         p.cold_note.setVisible(p._locked)
         p.tabs.setTabText(
-            TAB_HINTS, "Підказки 🔒" if p._locked else "Підказки"
+            TAB_HINTS, _tr("Підказки 🔒") if p._locked else _tr("Підказки")
         )
         self.refresh_lock_state()
 
     def update_xp_preview(self, xp: int, hints_used: int) -> None:
-        """Показує, скільки XP дасть задача з урахуванням відкритих підказок."""
+        """Shows how much XP the task grants given the opened hints."""
         self.refresh_xp(xp, hints_used)
 
     def tick(self, active_seconds: float) -> None:
-        """Оновлює лічильник активної роботи (викликає таймер головного вікна)."""
+        """Refreshes the active-work counter (called by the main-window timer)."""
         p = self.p
         if p._task is None:
             return
