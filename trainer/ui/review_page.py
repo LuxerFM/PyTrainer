@@ -1,12 +1,12 @@
-"""Сторінка «Повторення»: задачі, які час згадати.
+"""The "Повторення" ("Reviews") page: tasks due for recall.
 
-Правило просте: якщо задачу здав не з першого разу, завалив або підглянув
-розв'язок — вона повертається через 1 день, потім через 3, потім через 7,
-потім через 30. Так знання не вивітрюються.
+The rule is simple: if a task was not passed first try, failed, or its
+solution was peeked — it returns after 1 day, then 3, then 7, then 30. That
+way knowledge does not evaporate.
 
-Тут же — вхід у холодне повторення: випадкова вже здана задача без підказок
-і розв'язку. Звичайне повторення показує знайомий код, а холодне змушує
-згадати його з нуля.
+Also here is the cold-review entry: a random already-passed task with no
+hints and no solution. Ordinary review shows familiar code, while cold review
+forces recalling it from zero.
 """
 
 from __future__ import annotations
@@ -26,10 +26,10 @@ from .theme import Colors
 
 
 class ReviewPage(QWidget):
-    """Список задач на повторення: сьогодні і найближчим часом."""
+    """Review-task list: today and upcoming."""
 
     task_selected = Signal(str)
-    cold_review_requested = Signal()   # «дай випадкову здану задачу без підказок»
+    cold_review_requested = Signal()   # "give a random passed task, no hints"
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -38,20 +38,20 @@ class ReviewPage(QWidget):
         box.setSpacing(6)
 
         self.hint_label = QLabel(
-            "Задачі повертаються через 1 / 3 / 7 / 30 днів після того, як ти "
-            "здав їх не з першого разу. Натисни на задачу, щоб повторити."
+            self.tr("Задачі повертаються через 1 / 3 / 7 / 30 днів після того, як ти "
+                    "здав їх не з першого разу. Натисни на задачу, щоб повторити.")
         )
         self.hint_label.setObjectName("Subtle")
         self.hint_label.setWordWrap(True)
         box.addWidget(self.hint_label)
 
-        self.cold_button = QPushButton("❄  Холодне повторення: випадкова задача")
+        self.cold_button = QPushButton(self.tr("❄  Холодне повторення: випадкова задача"))
         self.cold_button.setObjectName("Ghost")
         self.cold_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.cold_button.setToolTip(
-            "Уже здана задача без підказок і розв'язку, з таймером. "
-            "Вердикт іде в чергу повторень: згадав — інтервал довший, "
-            "не згадав — задача повертається завтра."
+            self.tr("Уже здана задача без підказок і розв'язку, з таймером. "
+                    "Вердикт іде в чергу повторень: згадав — інтервал довший, "
+                    "не згадав — задача повертається завтра.")
         )
         self.cold_button.clicked.connect(
             lambda _=False: self.cold_review_requested.emit()
@@ -59,7 +59,7 @@ class ReviewPage(QWidget):
         box.addWidget(self.cold_button)
         box.addSpacing(4)
 
-        self.today_title = QLabel("СЬОГОДНІ")
+        self.today_title = QLabel(self.tr("СЬОГОДНІ"))
         self.today_title.setObjectName("SectionTitle")
         box.addWidget(self.today_title)
 
@@ -69,26 +69,26 @@ class ReviewPage(QWidget):
         self.today_list = self._build_list()
         box.addWidget(self.today_list, 1)
 
-        self.later_title = QLabel("ДАЛІ")
+        self.later_title = QLabel(self.tr("ДАЛІ"))
         self.later_title.setObjectName("SectionTitle")
         box.addWidget(self.later_title)
 
         self.later_list = self._build_list()
         box.addWidget(self.later_list, 1)
 
-        self.empty_label = QLabel("Черга порожня. Здавай задачі — і тут з'явиться розклад повторень.")
+        self.empty_label = QLabel(self.tr("Черга порожня. Здавай задачі — і тут з'явиться розклад повторень."))
         self.empty_label.setObjectName("Subtle")
         self.empty_label.setWordWrap(True)
         box.addWidget(self.empty_label)
 
-        # --- журнал помилок: те, на чому саме ти спіткнувся ---
-        self.mistakes_title = QLabel("ТВОЇ ПОМИЛКИ")
+        # --- mistake journal: what exactly you tripped on ---
+        self.mistakes_title = QLabel(self.tr("ТВОЇ ПОМИЛКИ"))
         self.mistakes_title.setObjectName("SectionTitle")
         box.addWidget(self.mistakes_title)
 
         self.mistakes_note = QLabel(
-            "Помилка, на якій спіткнувся, — найкорисніше, що є в цьому "
-            "тренажері. Натисни, щоб повернутися до задачі."
+            self.tr("Помилка, на якій спіткнувся, — найкорисніше, що є в цьому "
+                    "тренажері. Натисни, щоб повернутися до задачі.")
         )
         self.mistakes_note.setObjectName("Subtle")
         self.mistakes_note.setWordWrap(True)
@@ -103,7 +103,7 @@ class ReviewPage(QWidget):
         widget.itemClicked.connect(self._on_clicked)
         return widget
 
-    # ---------- дані ----------
+    # ---------- data ----------
 
     def set_rows(self, due_rows: list[dict], later_rows: list[dict]) -> None:
         self._fill(self.today_list, due_rows, overdue=True)
@@ -115,7 +115,7 @@ class ReviewPage(QWidget):
         self.later_title.setVisible(bool(later_rows))
 
     def _refresh_empty(self) -> None:
-        """Порожній підказці місце лише тоді, коли порожні обидва списки."""
+        """The empty hint belongs only when both lists are empty."""
         self.empty_label.setVisible(not self._has_reviews and not self._has_mistakes)
 
     def _fill(self, widget: QListWidget, rows: list[dict], overdue: bool = False) -> None:
@@ -134,17 +134,17 @@ class ReviewPage(QWidget):
         if task_id:
             self.task_selected.emit(task_id)
 
-    # ---------- журнал помилок ----------
+    # ---------- mistake journal ----------
 
     MISTAKE_COLOUR = {"open": Colors.error, "helped": Colors.warn}
 
     def set_mistakes(self, rows: list[dict]) -> None:
-        """Останні помилки: текст помилки, скільки разів і чи вже закрито.
+        """Latest mistakes: error text, how many times, whether closed.
 
-        Два кольори не для краси: червоне — ще «висить», жовте — закрито, але
-        з опорою (підказкою чи розв'язком), тому задача просить холодного
-        повторення. Без цієї різниці список довелося б або чистити цілком,
-        або тримати в ньому все назавжди.
+        Two colours are not for beauty: red still "hangs", yellow is closed
+        but with support (a hint or a solution), so the task asks for a cold
+        review. Without this difference the list would have to be either
+        wiped entirely or kept forever.
         """
         self.mistakes_list.clear()
         helped = False
@@ -165,12 +165,12 @@ class ReviewPage(QWidget):
             self.mistakes_list.addItem(item)
 
         self.mistakes_note.setText(
-            "Помилка «висить», доки задачу не здано чистим проходом — без "
-            "підказок і розв'язку. Жовте «закрито з допомогою» означає, що "
-            "задачу варто згадати холодним повторенням."
+            self.tr("Помилка «висить», доки задачу не здано чистим проходом — без "
+                    "підказок і розв'язку. Жовте «закрито з допомогою» означає, що "
+                    "задачу варто згадати холодним повторенням.")
             if helped else
-            "Помилка, на якій спіткнувся, — найкорисніше, що є в цьому "
-            "тренажері. Натисни, щоб повернутися до задачі."
+            self.tr("Помилка, на якій спіткнувся, — найкорисніше, що є в цьому "
+                    "тренажері. Натисни, щоб повернутися до задачі.")
         )
 
         visible = bool(rows)

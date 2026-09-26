@@ -1,14 +1,16 @@
-"""Оновлення бічних панелей: прогрес, повторення, помилки, план, статистика.
+"""Refreshing the side panels: progress, reviews, mistakes, plan, stats.
 
-Витягнуто з `MainWindow` (зріз 3 розпилу). Контролер тримає вказівник на
-вікно (`w`) і читає його `db`/`session`, а малює через `sidebar`, `panel`
-і бейджі вікна.
+Extracted from `MainWindow` (split slice 3). The controller holds a pointer
+to the window (`w`) and reads its `db`/`session`, drawing via `sidebar`,
+`panel` and the window badges.
 """
 
 from __future__ import annotations
 
 from datetime import date
 from typing import TYPE_CHECKING
+
+from PySide6.QtCore import QCoreApplication
 
 from curriculum import CURRICULUM, find_task, study_tasks
 
@@ -23,22 +25,26 @@ if TYPE_CHECKING:
     from .main_window import MainWindow
 
 
+def _tr(text: str) -> str:
+    return QCoreApplication.translate("RefreshView", text)
+
+
 def _human_when(iso: str) -> str:
-    """2026-09-25 → «сьогодні», «учора» або «25.09»."""
+    """2026-09-25 → "сьогодні" ("today"), "учора" ("yesterday") or "25.09"."""
     try:
         target = date.fromisoformat(iso)
     except ValueError:
         return iso
     delta = (date.today() - target).days
     if delta == 0:
-        return "сьогодні"
+        return _tr("сьогодні")
     if delta == 1:
-        return "учора"
+        return _tr("учора")
     return target.strftime("%d.%m")
 
 
 def _human_date(iso: str) -> str:
-    """2026-09-26 → «26.09 · через 2 дн.»"""
+    """2026-09-26 → "26.09 · через 2 дн." ("26.09 · in 2 days")."""
     try:
         target = date.fromisoformat(iso)
     except ValueError:
@@ -46,14 +52,14 @@ def _human_date(iso: str) -> str:
     text = target.strftime("%d.%m")
     days = (target - date.today()).days
     if days < 0:
-        return f"{text} · прострочено"
+        return _tr("{date} · прострочено").format(date=text)
     if days == 0:
-        return f"{text} · сьогодні"
-    return f"{text} · через {days} дн."
+        return _tr("{date} · сьогодні").format(date=text)
+    return _tr("{date} · через {n} дн.").format(date=text, n=days)
 
 
 class RefreshView:
-    """Перерахунок усього, що залежить від бази."""
+    """Recompute of everything database-dependent."""
 
     def __init__(self, window: MainWindow) -> None:
         self.w = window
@@ -69,12 +75,12 @@ class RefreshView:
         self.refresh_digest()
 
     def refresh_mistakes(self) -> None:
-        """Журнал помилок: що саме не пройшло й скільки разів.
+        """Mistake journal: what exactly failed and how many times.
 
-        Помилка лишається у списку, доки задачу не здано **чисто** — без
-        підказок і розв'язку. Хто здав із опорою, бачить жовте «закрито з
-        допомогою»: список не вдає, ніби все гаразд, і не перетворюється на
-        історію страждань — обидві крайнощі однаково шкідливі.
+        A mistake stays listed until the task is passed **cleanly** — no
+        hints, no solution. Who passed with support sees the yellow "closed
+        with help": the list neither pretends all is well nor turns into a
+        suffering history — both extremes harm equally.
         """
         w = self.w
         rows = []
@@ -90,20 +96,20 @@ class RefreshView:
                 "when": _human_when(state.last_at[:10]),
                 "status": state.status,
                 "status_label": state.label,
-                "tooltip": f'{state.check or "перевірка"}\n'
+                "tooltip": f'{state.check or _tr("перевірка")}\n'
                            f'{task.level} · {task.base_xp} XP\n\n'
-                           + ("Закрито з допомогою — згадай задачу холодним "
-                              "повторенням" if state.status == "helped"
-                              else "Натисни, щоб повернутися до задачі"),
+                           + (_tr("Закрито з допомогою — згадай задачу холодним "
+                                  "повторенням") if state.status == "helped"
+                              else _tr("Натисни, щоб повернутися до задачі")),
             })
-        rows.sort(key=lambda row: row["status"] != "open")   # спершу відкриті
+        rows.sort(key=lambda row: row["status"] != "open")   # open ones first
         w.sidebar.set_mistakes(rows)
 
     def refresh_digest(self) -> None:
-        """Тижневий огляд — одні розрахунки на сторінку, меню й вікно.
+        """Weekly digest — the same numbers for the page, the menu and the window.
 
-        Рахуємо на кожне оновлення прогресу: це кілька запитів до бази, і
-        завдяки цьому відкрите вікно огляду ніколи не показує старих цифр.
+        Recomputed on every progress refresh: a few database queries, and
+        thanks to it an open digest window never shows stale numbers.
         """
         w = self.w
         w._digest = weekly_digest(w.db)
@@ -132,8 +138,9 @@ class RefreshView:
             due_rows.append({
                 "task_id": task.id,
                 "title": task.title,
-                "when": f'{_human_date(row["due_date"])} · '
-                        f'інтервал {scoring.INTERVALS[depth]} дн.',
+                "when": _tr("{date} · інтервал {n} дн.").format(
+                    date=_human_date(row["due_date"]),
+                    n=scoring.INTERVALS[depth]),
                 "tooltip": f"{task.level} · {task.base_xp} XP",
             })
 
@@ -150,7 +157,7 @@ class RefreshView:
             })
 
         w.sidebar.set_reviews(due_rows, later_rows)
-        w.review_badge.setText(f"На повторення: {len(due_rows)}")
+        w.review_badge.setText(_tr("На повторення: {n}").format(n=len(due_rows)))
 
     def refresh_stats(self) -> None:
         w = self.w
@@ -168,24 +175,25 @@ class RefreshView:
         w.xp_badge.setText(f'XP {summary["xp"]}')
         streak = summary["streak"]
         w.streak_badge.setText(
-            f"Серія: {streak} дн." if streak != 1 else "Серія: 1 день"
+            _tr("Серія: {n} дн.").format(n=streak) if streak != 1
+            else _tr("Серія: 1 день")
         )
         self.update_today_badge(streak)
 
     def update_today_badge(self, streak: int) -> None:
-        """Нагадування про сьогоднішню практику — серія днів не чекає."""
+        """Today-practice reminder — the day streak does not wait."""
         w = self.w
         today = w.db.attempts_per_day(days=1).get(date.today().isoformat(), 0)
         if today:
-            w.today_badge.setText(f"Сьогодні: {today} запусків ✓")
+            w.today_badge.setText(_tr("Сьогодні: {n} запусків ✓").format(n=today))
             w.today_badge.setStyleSheet(f"color: {Colors.success};")
             return
 
         if streak:
-            w.today_badge.setText("Сьогодні: 0 — не втрать серію")
+            w.today_badge.setText(_tr("Сьогодні: 0 — не втрать серію"))
             w.today_badge.setStyleSheet(f"color: {Colors.warn};")
         else:
-            w.today_badge.setText("Сьогодні: 0 запусків")
+            w.today_badge.setText(_tr("Сьогодні: 0 запусків"))
             w.today_badge.setStyleSheet(f"color: {Colors.muted};")
 
     def load_history(self, task_id: str) -> None:
