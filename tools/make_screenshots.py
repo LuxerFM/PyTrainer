@@ -1,16 +1,15 @@
-"""Робить усі знімки для README — однією командою й без твого прогресу.
+"""Takes every README screenshot — one command, none of your progress.
 
     .venv\\Scripts\\python.exe tools/make_screenshots.py
 
-Кожен знімок — це справжній рендер вікна (жодних макетів): застосунок
-запускається на демонстраційній базі (`trainer/core/demo.py`), відкриває
-потрібну задачу, за потреби реально проганяє її тести — і зберігає
-`window.grab()` у `docs/images/`.
+Each screenshot is a real window render (no mockups): the app launches on a
+demo database (`trainer/core/demo.py`), opens the right task, really runs its
+tests when needed — and saves `window.grab()` into `docs/images/`.
 
-Чому саме скрипт, а не «зробив руками»: знімки в README тьмяніють швидко —
-змінилася верстка панелі, і картинки вже брешуть. Одна команда повертає їх
-до правди. Працює без екрана (QT_QPA_PLATFORM=offscreen), тому запускається
-і в CI, і по SSH.
+Why a script instead of "did it by hand": README screenshots go stale fast —
+the panel layout changed and the pictures already lie. One command brings them
+back to truth. Runs headless (QT_QPA_PLATFORM=offscreen), so it launches in
+CI and over SSH alike.
 """
 
 from __future__ import annotations
@@ -39,8 +38,8 @@ from trainer.ui.theme import apply_theme  # noqa: E402
 TARGET = ROOT / "docs" / "images"
 VIEW_ROADMAP, VIEW_REVIEWS, VIEW_PROGRESS = 0, 1, 2
 
-# Код, який «написав учень»: він працює, але саме на такому розбір коду
-# показує свою користь — і жодне з цих зауважень не про тести.
+# Code "written by a student": it works, but exactly on this the code review
+# shows its worth — and none of these remarks is about tests.
 SLOPPY_SAMPLE = '''\
 import math
 import random
@@ -62,7 +61,7 @@ def AvgOfMarks(marks):
 
 @dataclass
 class Shot:
-    """Один кадр: що відкрити, що запустити і як це підписати."""
+    """One frame: what to open, what to run, and how to caption it."""
 
     name: str
     caption: str
@@ -72,9 +71,9 @@ class Shot:
     run: bool = False
     tab: int | None = None
     theme: str = "dark"
-    cold: bool = False          # почати холодне повторення замість відкриття задачі
-    code: str = ""              # текст у редакторі (наприклад код із помилками стилю)
-    digest: bool = False        # зняти вікно тижневого огляду, а не головне вікно
+    cold: bool = False          # start a cold review instead of opening a task
+    code: str = ""              # editor text (e.g. code with style mistakes)
+    digest: bool = False        # capture the weekly-digest window, not the main one
 
 
 SHOTS: tuple[Shot, ...] = (
@@ -145,7 +144,7 @@ SHOTS: tuple[Shot, ...] = (
 
 
 def run_checks_and_wait(window: MainWindow, app: QApplication) -> None:
-    """Проганяє перевірки й чекає на результат (у застосунку це окремий потік)."""
+    """Runs the checks and waits for the result (a separate thread in the app)."""
     loop = QEventLoop()
     window.run_finished.connect(lambda *_: loop.quit())
     timer = QTimer()
@@ -158,7 +157,7 @@ def run_checks_and_wait(window: MainWindow, app: QApplication) -> None:
 
 
 def settle(app: QApplication, rounds: int = 3) -> None:
-    """Дає Qt домалювати: розкладка, переноси рядків, кольори."""
+    """Lets Qt finish drawing: layout, line wraps, colours."""
     for _ in range(rounds):
         app.processEvents()
 
@@ -173,8 +172,8 @@ def main() -> int:
     db = Database(folder / "demo.db")
     seed_database(db)
 
-    # settings_path=None — щоб знімки не залежали від того, як ти востаннє
-    # розтягнув вікно у справжньому застосунку.
+    # settings_path=None — so screenshots never depend on how you last
+    # resized the window in the real app.
     window = MainWindow(
         db=db,
         roadmap_path=folder / "Python-Roadmap.md",
@@ -207,7 +206,7 @@ def main() -> int:
                 window.show_digest()
             settle(app, 5)
 
-            # Вікно огляду — окремий віджет, тому знімаємо саме його.
+            # The digest window is a separate widget, so capture it, not the main.
             frame = window.digest_dialog if shot.digest else window
             path = TARGET / f"{shot.name}.png"
             if not frame.grab().save(str(path)):
