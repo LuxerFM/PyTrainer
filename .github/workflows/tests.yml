@@ -151,7 +151,7 @@ jobs:
         with:
           name: PyTrainer-windows
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: PyTrainer-windows.zip
           generate_release_notes: true
