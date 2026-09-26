@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtWidgets import QLabel, QPushButton, QToolButton, QVBoxLayout, QWidget
 
 from .theme import Colors
@@ -17,6 +17,10 @@ if TYPE_CHECKING:
     from ..curriculum.schema import Hint, Task
 
     from .task_panel import TaskPanel
+
+
+def _tr(text: str) -> str:
+    return QCoreApplication.translate("HintsView", text)
 
 
 def format_time(seconds: float) -> str:
