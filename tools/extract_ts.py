@@ -109,8 +109,27 @@ def extract(path: Path) -> list[tuple[str, str, int]]:
     return found
 
 
+def load_existing() -> dict[tuple[str, str], str | None]:
+    """Translations already in the .ts, so a re-run never wipes work."""
+    kept: dict[tuple[str, str], str | None] = {}
+    if not TS_PATH.exists():
+        return kept
+    import xml.dom.minidom
+    doc = xml.dom.minidom.parse(str(TS_PATH))
+    for context in doc.getElementsByTagName("context"):
+        name = context.getElementsByTagName("name")[0].firstChild.data
+        for message in context.getElementsByTagName("message"):
+            source = message.getElementsByTagName("source")[0].firstChild.data
+            trans = message.getElementsByTagName("translation")[0]
+            text = "".join(node.data for node in trans.childNodes
+                           if node.nodeType == node.TEXT_NODE)
+            kept[(name, source)] = text or None
+    return kept
+
+
 def write_ts(messages: list[tuple[str, str, Path, int]]) -> None:
     """Writes a valid .ts file (compilable by lrelease)."""
+    kept = load_existing()
     by_context: dict[str, list[tuple[str, Path, int]]] = {}
     seen: set[tuple[str, str]] = set()
     for context, source, path, lineno in messages:
@@ -125,10 +144,15 @@ def write_ts(messages: list[tuple[str, str, Path, int]]) -> None:
         out.append(f"<context>\n    <name>{escape(context)}</name>")
         for source, path, lineno in by_context[context]:
             rel = path.relative_to(ROOT).as_posix()
+            old = kept.get((context, source))
+            if old:
+                trans = f"        <translation>{escape(old)}</translation>"
+            else:
+                trans = '        <translation type="unfinished"></translation>'
             out.append(
                 f'    <message>\n        <location filename="../{rel}" line="{lineno}"/>\n'
                 f"        <source>{escape(source)}</source>\n"
-                '        <translation type="unfinished"></translation>\n'
+                f"{trans}\n"
                 "    </message>")
         out.append("</context>")
     out.append("</TS>")

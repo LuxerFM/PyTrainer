@@ -208,6 +208,14 @@ def main(argv: list[str] | None = None) -> int:
     theme = argv[argv.index("--theme") + 1] if "--theme" in argv else None
     apply_theme(app, theme)
 
+    from PySide6.QtCore import QSettings
+    from .ui.locale import current_language, install_language
+    from .ui.main_window import SETTINGS_PATH
+    cli_lang = argv[argv.index("--lang") + 1] if "--lang" in argv else None
+    saved = QSettings(str(SETTINGS_PATH), QSettings.Format.IniFormat)
+    lang = cli_lang if cli_lang in ("uk", "en") else current_language(saved)
+    install_language(app, lang)
+
     # A second copy on the same database is two different progresses wiping
     # each other. So the second launch only tells where the open window is
     # and exits. Demo mode is the exception: it runs on a temp database and

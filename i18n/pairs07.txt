@@ -1,0 +1,4 @@
+# Batch 7: language switch (3)
+MainWindow ||| Мова: українська ||| Language: Ukrainian
+MainWindow ||| Мова: English ||| Language: English
+MainWindow ||| Мову змінено — перезапусти вікно ||| Language changed — restart the window

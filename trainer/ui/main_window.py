@@ -63,6 +63,7 @@ from .run_flow import RunFlow
 from .sidebar import SideNav
 from .task_panel import TAB_HINTS, TAB_REVIEW, TaskPanel
 from .theme import (MONO_FONTS, Colors, apply_theme, pick_font, scale, set_scale)
+from .locale import current_language, set_language
 
 ROOT = app_folder()
 ROADMAP_PATH = ROOT / "Python-Roadmap.md"
@@ -195,6 +196,13 @@ class MainWindow(QMainWindow):
                          lambda: self.change_font_scale(-0.05))
         self._add_action(view_menu, self.tr("Звичайний розмір шрифту"), "Ctrl+0",
                          self.reset_font_scale)
+        view_menu.addSeparator()
+        if current_language(self.settings) == "en":
+            self._add_action(view_menu, self.tr("Мова: українська"), None,
+                             self.toggle_language)
+        else:
+            self._add_action(view_menu, self.tr("Мова: English"), None,
+                             self.toggle_language)
 
         help_menu = self.menuBar().addMenu(self.tr("Довідка"))
         self._add_action(help_menu, self.tr("Гарячі клавіші"), "F1", self.show_shortcuts)
@@ -1060,3 +1068,11 @@ class MainWindow(QMainWindow):
         self._retheme()
         self._save_state()
         self.statusBar().showMessage(self.tr("Масштаб шрифту: 100%"), 2500)
+
+    def toggle_language(self) -> None:
+        """View menu — Ukrainian ⇄ English, applies on next launch."""
+        new = "uk" if current_language(self.settings) == "en" else "en"
+        set_language(self.settings, new)
+        self._save_state()
+        self.statusBar().showMessage(
+            self.tr("Мову змінено — перезапусти вікно"), 4000)
