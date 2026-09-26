@@ -165,6 +165,12 @@ def main(argv: list[str] | None = None) -> int:
     # `trainer.core.db`, тому `--data-dir` має бути врахований раніше.
     apply_data_dir(argv)
 
+    from .core.crashlog import version_line
+
+    if "--version" in argv or "-V" in argv:
+        print(version_line())
+        return 0
+
     # У зібраному .exe PyInstaller приєднує вивід із кодуванням системи, і
     # будь-яке «…» у ньому зриває друк у консольних режимах (`--demo`,
     # `--screenshot`). Див. `core/exec_runner.ensure_streams`.
@@ -178,10 +184,14 @@ def main(argv: list[str] | None = None) -> int:
         print(HELP)
         return 1
 
+    from .core.crashlog import setup_crashlog
     from .core.db import Database, backup_database
     from .core.runner import warm_up_interpreter
     from .ui.main_window import MainWindow
     from .ui.theme import apply_theme
+
+    log_path = setup_crashlog()
+    print(f"Журнал: {log_path}")
 
     # Якщо застосунок уже створено (вбудований запуск, тести) — беремо його:
     # другий QApplication у одному процесі Qt не дозволяє.

@@ -58,6 +58,26 @@ class DataFolderTests(unittest.TestCase):
             self.assertNotIn(paths.DATA_ENV, os.environ)
 
 
+class AtomicWriteTests(unittest.TestCase):
+    """Атомарний запис: читач бачить або старий файл цілком, або новий."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.target = Path(self.tmp.name) / "progress.json"
+
+    def test_writes_content(self):
+        paths.atomic_write_text(self.target, '{"a": 1}')
+        self.assertEqual(self.target.read_text(encoding="utf-8"), '{"a": 1}')
+
+    def test_overwrite_leaves_no_tmp_files(self):
+        paths.atomic_write_text(self.target, "старе")
+        paths.atomic_write_text(self.target, "нове")
+        self.assertEqual(self.target.read_text(encoding="utf-8"), "нове")
+        leftovers = list(Path(self.tmp.name).glob("progress.json.*.tmp"))
+        self.assertEqual(leftovers, [])
+
+
 class MigrationTests(unittest.TestCase):
     """Перенос бази й копій зі старої теки в теку даних."""
 

@@ -186,6 +186,60 @@ class DatabaseTests(unittest.TestCase):
         finally:
             other.close()
 
+    def test_snapshot_restores_attempts_mistakes_and_stats(self):
+        self.db.mark_solved("w1-hello", 100)
+        self.db.record_attempt(
+            "w1-hello", ok=False, with_checks=True, xp=0,
+            failed_check="очікувався вивід", error_kind="WrongOutput",
+        )
+        self.db.record_attempt(
+            "w1-hello", ok=True, with_checks=True, xp=100, clean=True,
+        )
+        snapshot = self.db.snapshot()
+        self.assertEqual(snapshot["version"], 2)
+        self.assertEqual(len(snapshot["attempts"]), 2)
+
+        other = Database(":memory:")
+        try:
+            other.restore(snapshot)
+            self.assertEqual(other.attempts_count("w1-hello"), 2)
+            self.assertEqual(other.passes_count("w1-hello"), 1)
+            self.assertEqual(len(other.mistake_history()), 1)
+            self.assertGreaterEqual(len(other.xp_by_day()), 1)
+            self.assertEqual(len(other.history("w1-hello")), 2)
+        finally:
+            other.close()
+
+    def test_restore_is_idempotent_for_attempts(self):
+        self.db.mark_solved("w1-hello", 100)
+        self.db.record_attempt("w1-hello", ok=True, with_checks=True, xp=100)
+        snapshot = self.db.snapshot()
+
+        other = Database(":memory:")
+        try:
+            other.restore(snapshot)
+            other.restore(snapshot)
+            self.assertEqual(other.attempts_count("w1-hello"), 1)
+        finally:
+            other.close()
+
+    def test_restore_accepts_version_1_without_attempts(self):
+        old = {
+            "version": 1,
+            "saved_at": "2026-09-26T00:00:00",
+            "progress": [{
+                "task_id": "w1-hello", "status": "done",
+                "solved_at": "2026-09-26T00:00:00",
+                "best_xp": 100, "bonus_xp": 0, "hints_used": 0,
+                "solution_used": 0, "active_seconds": 0.0,
+            }],
+            "reviews": [],
+        }
+        restored = self.db.restore(old)
+        self.assertEqual(restored, 1)
+        self.assertEqual(self.db.status("w1-hello"), "done")
+        self.assertEqual(self.db.attempts_count("w1-hello"), 0)
+
     def test_total_active_seconds(self):
         self.db.add_active_seconds("w1-hello", 60)
         self.db.add_active_seconds("w1-vars", 30)
@@ -499,6 +553,67 @@ class BackupTests(unittest.TestCase):
 
     def test_no_backup_without_a_database(self):
         self.assertIsNone(backup_database(self.folder / "нема.db"))
+
+    def test_list_backups_returns_newest_first(self):
+        from trainer.core.db import list_backups
+
+        self.assertEqual(list_backups(self.folder / "pytrainer.db"), [])
+        self.db.mark_solved("w1-hello", 100)
+        self.db.close()
+        first = backup_database(self.folder / "pytrainer.db")
+        second = backup_database(self.folder / "pytrainer.db")
+
+        found = list_backups(self.folder / "pytrainer.db")
+        self.assertEqual(len(found), 2)
+        self.assertEqual(found[0]["path"], second)
+        self.assertEqual(found[1]["path"], first)
+        self.assertGreaterEqual(found[0]["size"], 0)
+
+    def test_restore_backup_brings_back_old_state(self):
+        from trainer.core.db import list_backups, restore_backup
+
+        self.db.mark_solved("w1-hello", 100)
+        self.db.close()
+        backup_database(self.folder / "pytrainer.db")
+
+        live = Database(self.folder / "pytrainer.db")
+        live.mark_solved("w1-vars", 50)
+        live.close()
+
+        backup = list_backups(self.folder / "pytrainer.db")[0]
+        safety = restore_backup(backup["path"], self.folder / "pytrainer.db")
+        self.assertIsNotNone(safety)
+        self.assertTrue(safety.exists())
+
+        restored = Database(self.folder / "pytrainer.db")
+        try:
+            self.assertEqual(restored.status("w1-hello"), "done")
+            self.assertEqual(restored.status("w1-vars"), "todo")
+            safety_db = Database(safety)
+            try:
+                self.assertEqual(safety_db.status("w1-vars"), "done")
+            finally:
+                safety_db.close()
+        finally:
+            restored.close()
+
+    def test_restore_backup_rejects_broken_copy(self):
+        from trainer.core.db import restore_backup
+
+        self.db.mark_solved("w1-hello", 100)
+        self.db.close()
+        broken = self.folder / "backups" / "pytrainer-broken.db"
+        broken.parent.mkdir(parents=True, exist_ok=True)
+        broken.write_text("не база", encoding="utf-8")
+
+        with self.assertRaises(ValueError):
+            restore_backup(broken, self.folder / "pytrainer.db")
+
+        intact = Database(self.folder / "pytrainer.db")
+        try:
+            self.assertEqual(intact.status("w1-hello"), "done")
+        finally:
+            intact.close()
 
 
 if __name__ == "__main__":

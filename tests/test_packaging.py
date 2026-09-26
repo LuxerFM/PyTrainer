@@ -250,9 +250,17 @@ class DocsTest(unittest.TestCase):
         """
         total = unittest.defaultTestLoader.discover(str(ROOT / "tests")).countTestCases()
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        last_two = total % 100
+        last_one = total % 10
+        if last_one == 1 and last_two != 11:
+            form = "тест"
+        elif last_one in (2, 3, 4) and last_two not in (12, 13, 14):
+            form = "тести"
+        else:
+            form = "тестів"
         self.assertIn(
-            f"{total} тестів", readme,
-            f"у README немає згадки «{total} тестів» — онови цифри",
+            f"{total} {form}", readme,
+            f"у README немає згадки «{total} {form}» — онови цифри",
         )
 
     def test_readme_states_the_real_task_count(self) -> None:

@@ -110,6 +110,16 @@ def main(argv: list[str] | None = None) -> int:
 
     ensure_icons()
 
+    from datetime import datetime
+    sys.path.insert(0, str(ROOT))
+    from trainer import __version__
+    (ROOT / "trainer" / "_build.py").write_text(
+        f'"""Дата збірки — генерує tools/build_exe.py, руками не чіпати."""\n'
+        f'BUILD_DATE = "{datetime.now().strftime("%Y-%m-%d")}"\n'
+        f'BUILD_VERSION = "{__version__}"\n',
+        encoding="utf-8",
+    )
+
     command = [
         sys.executable,
         "-m",

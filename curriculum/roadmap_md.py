@@ -170,7 +170,7 @@ def render(statuses: dict[str, str], stats: dict | None = None) -> str:
 
 
 def write(path: str | Path, statuses: dict[str, str], stats: dict | None = None) -> Path:
-    """Пише файл роадмапу (перезаписує)."""
-    target = Path(path)
-    target.write_text(render(statuses, stats), encoding="utf-8")
-    return target
+    """Пише файл роадмапу (перезаписує, атомарно)."""
+    from trainer.paths import atomic_write_text
+
+    return atomic_write_text(path, render(statuses, stats))

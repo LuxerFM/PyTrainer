@@ -12,6 +12,7 @@ SQLite вбудований у Python, тому нічого встановлю�
 
 from __future__ import annotations
 
+import shutil
 import sqlite3
 from contextlib import closing
 from datetime import date, datetime
@@ -125,6 +126,89 @@ def backup_database(db_path: str | Path = DB_PATH,
         except OSError:            # копія зайнята іншим процесом — не біда
             pass
     return target
+
+
+def list_backups(db_path: str | Path = DB_PATH,
+                 folder: str | Path | None = None) -> list[dict]:
+    """Копії бази від нових до старих — для діалогу «Відновити з копії».
+
+    Кожен елемент: `path`, `name`, `mtime` (datetime), `size` (байти).
+    Порожній список — копій ще немає (напр. перший запуск).
+    """
+    source = Path(db_path)
+    target_folder = Path(folder) if folder else source.parent / BACKUP_FOLDER
+    if not target_folder.is_dir():
+        return []
+    found = [
+        item for item in target_folder.glob(f"{source.stem}-*.db")
+        if item.is_file()
+    ]
+    found.sort(key=lambda item: (item.stat().st_mtime_ns, item.name),
+               reverse=True)
+    return [
+        {
+            "path": item,
+            "name": item.name,
+            "mtime": datetime.fromtimestamp(item.stat().st_mtime),
+            "size": item.stat().st_size,
+        }
+        for item in found
+    ]
+
+
+def restore_backup(backup: str | Path,
+                   db_path: str | Path = DB_PATH) -> Path | None:
+    """Замінює живу базу копією. Повертає шлях страхової копії поточного стану.
+
+    None — живої бази не було, страхувати нічого.
+
+    Порядок заради безпеки:
+
+    1. копія спершу перевіряється (відкривається й `quick_check`) — бита копія
+       живу базу не чіпає, кидає `ValueError`;
+    2. поточний стан зберігається в `backups/` як `*-pre-restore-*.db`;
+    3. лише потім копія кладеться на місце живої бази.
+
+    З'єднання з живою базою мусить бути закрите **до** виклику: на Windows
+    відкритий файл не перезаписати. Після виклику базу треба відкрити заново
+    (`Database(db_path)`).
+    """
+    source = Path(backup)
+    target = Path(db_path)
+    if not source.exists() or source.stat().st_size == 0:
+        raise ValueError(f"Копії немає або вона порожня: {source}")
+
+    # Перевірка окремим з'єднанням, живу базу не чіпаємо.
+    check = sqlite3.connect(str(source))
+    try:
+        check.row_factory = sqlite3.Row
+        row = check.execute("PRAGMA quick_check").fetchone()
+        if not row or row[0] != "ok":
+            raise ValueError(f"Копія пошкоджена: {source.name}")
+    except sqlite3.DatabaseError as error:
+        raise ValueError(f"Копія не є базою: {source.name} ({error})") from error
+    finally:
+        check.close()
+
+    folder = target.parent / BACKUP_FOLDER
+    folder.mkdir(parents=True, exist_ok=True)
+    safety = None
+    if target.exists() and target.stat().st_size > 0:
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        safety = folder / f"{target.stem}-pre-restore-{stamp}.db"
+        with closing(sqlite3.connect(str(target))) as src, \
+                closing(sqlite3.connect(str(safety))) as dst:
+            src.backup(dst)
+
+    for suffix in ("", "-wal", "-shm"):        # сліди WAL старої бази
+        side = Path(str(target) + suffix)
+        if side.exists() and side != source:
+            try:
+                side.unlink()
+            except OSError:
+                pass
+    shutil.copy2(source, target)
+    return safety
 
 
 class Database:
@@ -645,10 +729,14 @@ class Database:
     )
 
     def snapshot(self) -> dict:
-        """Стан прогресу у вигляді словника — його можна зберегти у файл."""
+        """Стан прогресу у вигляді словника — його можна зберегти у файл.
+
+        Версія 2 включає `attempts`: без них на новій машині порожні журнал
+        помилок, тижневий огляд і частина статистики (streak, XP по днях).
+        """
         fields = ", ".join(self.PROGRESS_FIELDS)
         return {
-            "version": 1,
+            "version": 2,
             "saved_at": _now(),
             "progress": [
                 dict(row)
@@ -662,10 +750,26 @@ class Database:
                     "SELECT task_id, due_date, interval_index, last_result FROM reviews"
                 )
             ],
+            "attempts": [
+                dict(row)
+                for row in self.connection.execute(
+                    """
+                    SELECT task_id, created_at, ok, with_checks, clean, xp,
+                           failed_check, error_kind
+                      FROM attempts
+                     ORDER BY id
+                    """
+                )
+            ],
         }
 
     def restore(self, data: dict) -> int:
-        """Відновлює прогрес зі словника. Повертає кількість відновлених задач."""
+        """Відновлює прогрес зі словника. Повертає кількість відновлених задач.
+
+        Файли версії 1 не мають `attempts` — їх приймаємо як є, спроби не
+        чіпаємо. Версія 2 зливається без дублів: повторний імпорт того самого
+        файлу не подвоює статистику.
+        """
         restored = 0
         for row in data.get("progress", []):
             self._ensure(row["task_id"])
@@ -697,8 +801,49 @@ class Database:
                 """,
                 (row["task_id"], row["due_date"], int(row.get("interval_index") or 0), _now()),
             )
+        self._restore_attempts(data.get("attempts") or [])
         self.connection.commit()
         return restored
+
+    def _restore_attempts(self, rows: list[dict]) -> int:
+        """Доливає спроби з файлу, пропускаючи точні дублі. Повертає додані."""
+        if not rows:
+            return 0
+        existing = {
+            (row["task_id"], row["created_at"], int(row["ok"]),
+             int(row["with_checks"]), int(row["clean"]), int(row["xp"]),
+             row["failed_check"] or "", row["error_kind"] or "")
+            for row in self.connection.execute(
+                """
+                SELECT task_id, created_at, ok, with_checks, clean, xp,
+                       failed_check, error_kind
+                  FROM attempts
+                """
+            )
+        }
+        added = 0
+        for row in rows:
+            key = (
+                row["task_id"], row.get("created_at"),
+                int(row.get("ok") or 0), int(row.get("with_checks") or 0),
+                int(row.get("clean") or 0), int(row.get("xp") or 0),
+                row.get("failed_check") or "", row.get("error_kind") or "",
+            )
+            if key in existing:
+                continue
+            self._ensure(row["task_id"])
+            self.connection.execute(
+                """
+                INSERT INTO attempts
+                    (task_id, created_at, ok, with_checks, clean, xp,
+                     failed_check, error_kind)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (key[0], key[1], key[2], key[3], key[4], key[5], key[6], key[7]),
+            )
+            existing.add(key)
+            added += 1
+        return added
 
     def reset_task(self, task_id: str) -> None:
         """Повністю прибирає прогрес задачі (для кнопки «почати спочатку»)."""

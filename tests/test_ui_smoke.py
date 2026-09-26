@@ -858,6 +858,25 @@ class UiSmokeTests(unittest.TestCase):
         self.assertEqual(data["progress"][0]["task_id"], "w1-hello")
         self.assertEqual(data["progress"][0]["status"], "done")
 
+    def test_progress_writes_are_throttled_but_force_writes(self):
+        self.db.mark_solved("w1-hello", 100)
+        self.window._write_progress()
+        first = self.window.progress_path.read_text(encoding="utf-8")
+        self.assertIn("w1-hello", first)
+
+        self.db.mark_solved("w1-vars", 85)
+        self.window._write_progress()
+        self.assertEqual(
+            self.window.progress_path.read_text(encoding="utf-8"), first,
+            "другий запис поспіль має пропуститись — дзеркала пишуться рідко",
+        )
+
+        self.window._write_progress(force=True)
+        self.assertIn(
+            "w1-vars",
+            self.window.progress_path.read_text(encoding="utf-8"),
+        )
+
     def test_progress_roundtrip_restores_state(self):
         self.db.mark_solved("w1-hello", 100)
         self.db.mark_solved("w1-vars", 85)

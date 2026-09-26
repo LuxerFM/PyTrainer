@@ -27,6 +27,7 @@ from __future__ import annotations
 import os
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 APP_NAME = "PyTrainer"
@@ -94,6 +95,33 @@ def resource(*parts: str) -> Path:
     base = getattr(sys, "_MEIPASS", None)
     root = Path(base) if base else Path(__file__).resolve().parents[1]
     return root.joinpath(*parts)
+
+
+def atomic_write_text(path: str | Path, text: str,
+                      encoding: str = "utf-8") -> Path:
+    """Пише текстовий файл атомарно: tmp поруч + `os.replace`.
+
+    Навіщо: `progress.json` і роадмап переписувались звичайним `write_text`
+    на кожен вердикт — обрив посеред запису (вимкнення, вбивство процесу)
+    лишав півфайлу. Тут читач бачить або старий файл цілком, або новий
+    цілком, третього не дано. `os.replace` атомарний і на Windows, і на
+    POSIX, якщо tmp лежить у тій самій теці.
+    """
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(target.parent),
+                               prefix=target.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding=encoding) as handle:
+            handle.write(text)
+        os.replace(tmp, target)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    return target
 
 
 def migrate_data(folder: Path | None = None,
@@ -167,6 +195,7 @@ __all__ = [
     "DATA_ENV",
     "app_folder",
     "apply_data_dir",
+    "atomic_write_text",
     "data_folder",
     "database_path",
     "is_frozen",

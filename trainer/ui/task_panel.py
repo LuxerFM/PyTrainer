@@ -25,20 +25,17 @@ import html
 import re
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
     QListWidget,
-    QListWidgetItem,
     QPushButton,
     QScrollArea,
     QSizePolicy,
     QTabWidget,
     QTextBrowser,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -48,6 +45,10 @@ from curriculum.schema import Check, Hint, Task
 
 from ..core.codereview import NOT_REVIEWED, CodeReview, Remark
 from ..core.runner import RunResult
+from .hints_view import HintsView
+from .history_view import HistoryView
+from .review_view import ReviewView
+from .test_results import TestResults
 from .theme import Colors, mono_family, prose_family, ui_size
 
 # Індекси вкладок — щоб жодне число не «загубилось» у коді вікна.
@@ -190,6 +191,11 @@ class TaskPanel(QWidget):
         self.tabs.addTab(self._build_hints_tab(), "Підказки")
         self.tabs.addTab(self._build_history_tab(), "Історія")
         layout.addWidget(self.tabs, 1)
+
+        self.results = TestResults(self)
+        self.review_view = ReviewView(self)
+        self.hints_view = HintsView(self)
+        self.history_view = HistoryView(self)
 
     # ---------- верхівка ----------
 
@@ -445,385 +451,100 @@ class TaskPanel(QWidget):
         widget.deleteLater()
 
     def _clear_hints(self) -> None:
-        while self.hints_box.count() > 1:
-            item = self.hints_box.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                self._drop_widget(widget)
+        self.hints_view.clear_hints()
 
     def _build_manual_block(self, task_id: str, done: bool) -> None:
-        self._clear_hints()
-        block = QWidget()
-        box = QVBoxLayout(block)
-        box.setContentsMargins(0, 0, 0, 0)
-        box.setSpacing(6)
-
-        button = QPushButton(
-            "Зняти позначку" if done else "Позначити виконаним"
-        )
-        button.setObjectName("Ghost")
-        button.setCursor(Qt.CursorShape.PointingHandCursor)
-        button.clicked.connect(
-            lambda _=False, task=task_id: self.manual_toggle_requested.emit(task)
-        )
-        box.addWidget(button)
-        self.hints_box.insertWidget(self.hints_box.count() - 1, block)
+        self.hints_view.build_manual_block(task_id, done)
 
     def set_history(self, rows, *, solved: bool, best_xp: int, hints_used: int,
                     active_seconds: float) -> None:
-        self.history_list.clear()
-        if not rows:
-            self.history_summary.setText("Ще жодного запуску цієї задачі.")
-            return
-
-        self.history_summary.setText(
-            f"Задача: {'здано ✓' if solved else 'ще не здана'} · "
-            f"XP: {best_xp} · підказок відкрито: {hints_used} · "
-            f"час над задачею: {_format_time(active_seconds)}"
+        self.history_view.set_history(
+            rows, solved=solved, best_xp=best_xp, hints_used=hints_used,
+            active_seconds=active_seconds,
         )
-        for row in rows:
-            when = row["created_at"][:16].replace("T", " ")
-            if not row["with_checks"]:
-                # звичайний запуск: не невдача, просто проба коду
-                item = QListWidgetItem(f"{when} · ▸ запуск")
-                item.setForeground(QColor(Colors.muted))
-            else:
-                mark = "✓" if row["ok"] else "✕"
-                xp = f' · +{row["xp"]} XP' if row["xp"] else ""
-                item = QListWidgetItem(f"{when} · {mark} перевірка{xp}")
-                item.setForeground(
-                    QColor(Colors.success if row["ok"] else Colors.error)
-                )
-            self.history_list.addItem(item)
 
     @property
     def locked(self) -> bool:
         """Чи це холодне повторення (підказки й розв'язок вимкнено)."""
-        return self._locked
+        return self.hints_view.locked
 
     def set_locked(self, locked: bool) -> None:
         """Вмикає/вимикає холодне повторення в панелі підказок."""
-        self._locked = bool(locked)
-        self.cold_note.setVisible(self._locked)
-        self.tabs.setTabText(
-            TAB_HINTS, "Підказки 🔒" if self._locked else "Підказки"
-        )
-        self._refresh_lock_state()
+        self.hints_view.set_locked(locked)
 
     def update_xp_preview(self, xp: int, hints_used: int) -> None:
         """Показує, скільки XP дасть задача з урахуванням відкритих підказок."""
-        self._refresh_xp(xp, hints_used)
+        self.hints_view.update_xp_preview(xp, hints_used)
 
     def tick(self, active_seconds: float) -> None:
         """Оновлює лічильник активної роботи (викликає таймер головного вікна)."""
-        if self._task is None:
-            return
-        self._active_seconds = active_seconds
-        self._refresh_lock_state()
+        self.hints_view.tick(active_seconds)
 
     # ---------- перевірки ----------
 
+    # ---------- вкладка «Тести» (м'ясо — в ui/test_results.py) ----------
+
     def _clear_checks(self) -> None:
-        while self.checks_box.count() > 1:
-            item = self.checks_box.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                self._drop_widget(widget)
-        self._check_cards.clear()
+        self.results.clear_checks()
 
     def _add_card(self, widget: QWidget, box: QVBoxLayout | None = None) -> None:
-        target = box if box is not None else self.checks_box
-        target.insertWidget(target.count() - 1, widget)
+        self.results.add_card(widget, box)
 
-    def _check_card(
-        self,
-        *,
-        mark: str,
-        name: str,
-        detail: str = "",
-        state: str = "pending",
-        tooltip: str = "",
-        extra: QWidget | None = None,
-    ) -> QFrame:
+    def _check_card(self, **kwargs) -> QFrame:
         """Одна картка: значок стану, назва перевірки й пояснення."""
-        card = QFrame()
-        card.setObjectName("CheckCard")
-        colours = {
-            "ok": (Colors.success, Colors.border),
-            "fail": (Colors.error, Colors.error),
-            "pending": (Colors.muted, Colors.border),
-            "info": (Colors.warn, Colors.warn),
-        }
-        mark_colour, border = colours.get(state, colours["pending"])
-        card.setStyleSheet(
-            f"QFrame#CheckCard {{ background-color: {Colors.elevated};"
-            f" border: 1px solid {border}; border-radius: 8px; }}"
-        )
-
-        row = QHBoxLayout(card)
-        row.setContentsMargins(11, 9, 11, 9)
-        row.setSpacing(9)
-
-        mark_label = QLabel(mark)
-        mark_label.setObjectName("CheckMark")
-        mark_label.setStyleSheet(f"color: {mark_colour};")
-        mark_label.setFixedWidth(16)
-        mark_label.setAlignment(
-            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter
-        )
-        row.addWidget(mark_label)
-
-        column = QVBoxLayout()
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(3)
-
-        name_label = QLabel(name)
-        name_label.setObjectName("CheckName")
-        name_label.setWordWrap(True)
-        column.addWidget(name_label)
-
-        if detail:
-            detail_label = QLabel(detail)
-            detail_label.setObjectName(
-                "CheckError" if state == "fail" else "CheckDetail"
-            )
-            detail_label.setWordWrap(True)
-            detail_label.setTextInteractionFlags(
-                Qt.TextInteractionFlag.TextSelectableByMouse
-            )
-            column.addWidget(detail_label)
-
-        if extra is not None:
-            column.addWidget(extra)
-
-        row.addLayout(column, 1)
-        if tooltip:
-            card.setToolTip(tooltip)
-        return card
+        return self.results.check_card(**kwargs)
 
     @staticmethod
     def _check_kind(check: Check) -> str:
-        return "перевірка виводу програми" if check.is_stdout else "перевірка коду"
+        return TestResults.check_kind(check)
 
     def show_planned_checks(self, task: Task | None) -> None:
         """Показує список перевірок **до** запуску: що саме вимагатимуть."""
-        self._clear_checks()
-
-        if task is None or not task.checks:
-            self.tests_summary.setObjectName("VerdictWarn")
-            self.tests_summary.setText("Це пункт поза тренажером")
-            self.tests_detail.setText(
-                "Тут немає прихованих тестів — результат оцінюєш ти сам."
-            )
-        else:
-            total = len(task.checks)
-            self.tests_summary.setObjectName("VerdictWarn")
-            self.tests_summary.setText(
-                f"Буде {total} " + (
-                    "перевірка" if total == 1 else
-                    "перевірки" if 2 <= total <= 4 else
-                    "перевірок"
-                ) + " — ще не запускались"
-            )
-            for check in task.checks:
-                self._add_card(self._check_card(
-                    mark="○",
-                    name=check.name,
-                    detail=self._check_kind(check),
-                    state="pending",
-                ))
-            self.tests_detail.setText(
-                "Перевірки приховані: ти бачиш, що саме вони вимагають, але не "
-                "сам код тесту. Натисни «Перевірити» (F5), щоб прогнати їх."
-            )
-
-        self._repolish(self.tests_summary)
+        self.results.show_planned_checks(task)
 
     def reset_tests(self) -> None:
-        self.show_planned_checks(self._task)
+        self.results.reset_tests()
 
     def show_result(self, result: RunResult, with_checks: bool) -> None:
-        self._clear_checks()
-
-        if with_checks and result.checks:
-            passed = result.passed_count
-            total = len(result.checks)
-
-            for check in result.checks:
-                detail = ""
-                if check.ok:
-                    detail = "пройдено"
-                elif check.error:
-                    detail = check.error
-                if not check.ok and check.actual:
-                    first_lines = "\n".join(check.actual.splitlines()[:4])
-                    detail = f"{detail}\nНасправді вивела:\n{first_lines}" if detail \
-                        else f"Насправді вивела:\n{first_lines}"
-                self._add_card(self._check_card(
-                    mark="✓" if check.ok else "✕",
-                    name=check.name,
-                    detail=detail.strip(),
-                    state="ok" if check.ok else "fail",
-                    tooltip=check.error,
-                ))
-
-            if result.all_passed:
-                self.tests_summary.setObjectName("VerdictOk")
-                self.tests_summary.setText(
-                    f"Усі перевірки пройдено: {passed} із {total} ✓"
-                )
-            else:
-                self.tests_summary.setObjectName("VerdictBad")
-                self.tests_summary.setText(
-                    f"Пройдено {passed} із {total} — є що виправити"
-                )
-
-            self._show_advice(result, passed, total)
-        elif result.timed_out:
-            self.tests_summary.setObjectName("VerdictWarn")
-            self.tests_summary.setText("Код зупинено за таймаутом")
-            self._show_advice(result, 0, 0)
-        elif result.stderr:
-            self.tests_summary.setObjectName("VerdictBad")
-            self.tests_summary.setText("Код впав з помилкою")
-            self._show_advice(result, 0, 0)
-        else:
-            self.tests_summary.setObjectName("VerdictOk")
-            self.tests_summary.setText("Код виконано без помилок")
-            self.tests_detail.setText(
-                "Це був звичайний запуск. Натисни «Перевірити» (F5), щоб "
-                "прогнати приховані тести."
-            )
-
-        self._repolish(self.tests_summary)
-        self.tabs.setCurrentIndex(TAB_TESTS)
+        self.results.show_result(result, with_checks)
 
     def _show_advice(self, result: RunResult, passed: int, total: int) -> None:
         """Пояснює помилку людською мовою й підказує наступний крок."""
-        advice = result.advice
-        self._add_jump_button(result)
-        if not advice:
-            if result.all_passed:
-                self.tests_detail.setText(
-                    "Так тримати! Наступна задача — у списку зліва (Ctrl+N)."
-                )
-            else:
-                first_error = result.first_error
-                self.tests_detail.setText(
-                    f"Перша проблема: {first_error}" if first_error
-                    else "Подивись, яка саме перевірка впала, вище."
-                )
-            return
-
-        kind = advice.splitlines()[0]
-        self._add_card(self._check_card(
-            mark="?",
-            name="Що це означає",
-            detail=advice,
-            state="info",
-            tooltip=kind,
-        ))
-        self.tests_detail.setText(
-            "Помилка — це підказка, а не вирок: Python каже, де саме код "
-            "розійшовся з твоїм задумом."
-        )
+        self.results.show_advice(result, passed, total)
 
     def _add_jump_button(self, result: RunResult) -> None:
-        """Кнопка «перейти до рядка N» — найшвидший шлях від помилки до коду.
-
-        Номер рядка вже знає пояснювач помилок; лишається дати людині
-        кнопку, щоб не шукати його очима в редакторі.
-        """
-        line = result.failed_line
-        if not line:
-            self._jump_line = 0
-            return
-        self._jump_line = line
-        button = QPushButton(f"↪  Перейти до рядка {line}")
-        button.setObjectName("Ghost")
-        button.setCursor(Qt.CursorShape.PointingHandCursor)
-        button.clicked.connect(
-            lambda _=False, number=line: self.jump_to_line_requested.emit(number)
-        )
-        holder = QWidget()
-        row = QHBoxLayout(holder)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.addWidget(button)
-        row.addStretch(1)
-        self._add_card(holder)
+        """Кнопка «перейти до рядка N» — найшвидший шлях від помилки до коду."""
+        self.results.add_jump_button(result)
 
     @property
     def jump_line(self) -> int:
         """Рядок, на який можна перейти після останнього прогону (0 — немає)."""
-        return getattr(self, "_jump_line", 0)
+        return self.results.jump_line
 
     # ---------- розбір коду ----------
 
     def show_review(self, review: CodeReview) -> None:
         """Показує розбір коду: зауваження з номерами рядків і одну похвалу."""
-        self._clear_review()
-        self.review_summary.setText(review.summary)
-        self.review_summary.setObjectName("VerdictOk" if review.ok else "VerdictWarn")
-        self._repolish(self.review_summary)
-
-        for remark in review.remarks:
-            self._add_card(self._review_card(remark), self.review_box)
-
-        issues = len(review.issues)
-        self.tabs.setTabText(TAB_REVIEW, f"Рев'ю · {issues}" if issues else "Рев'ю")
-        self.review_button.setText("Розібрати ще раз")
+        self.review_view.show_review(review)
 
     def reset_review(self) -> None:
         """Забуває попередній розбір: для нової задачі він був би брехнею."""
-        self._clear_review()
-        self.review_summary.setText(NOT_REVIEWED)
-        self.review_summary.setObjectName("Subtle")
-        self._repolish(self.review_summary)
-        self.review_button.setText("Розібрати код")
-        self.tabs.setTabText(TAB_REVIEW, "Рев'ю")
+        self.review_view.reset_review()
 
     @property
     def review_cards(self) -> list[QFrame]:
         """Картки розбору — щоб тести могли їх порахувати."""
-        return [
-            widget
-            for index in range(self.review_box.count())
-            if (widget := self.review_box.itemAt(index).widget()) is not None
-        ]
+        return self.review_view.review_cards
 
     def _clear_review(self) -> None:
-        while self.review_box.count() > 1:
-            item = self.review_box.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                self._drop_widget(widget)
+        self.review_view.clear_review()
 
     def _review_card(self, remark: Remark) -> QFrame:
-        return self._check_card(
-            mark="✎" if remark.is_praise else "!",
-            name=remark.title,
-            detail=remark.advice,
-            state="ok" if remark.is_praise else "info",
-            tooltip=f"Рядок {remark.line}" if remark.line else "",
-            extra=self._line_button(remark.line),
-        )
+        return self.review_view.review_card(remark)
 
     def _line_button(self, line: int) -> QWidget | None:
         """Кнопка «перейти до рядка» — з зауваження одразу в код."""
-        if not line:
-            return None
-        button = QPushButton(f"↪  Рядок {line}")
-        button.setObjectName("Ghost")
-        button.setCursor(Qt.CursorShape.PointingHandCursor)
-        button.clicked.connect(
-            lambda _=False, number=line: self.jump_to_line_requested.emit(number)
-        )
-        holder = QWidget()
-        row = QHBoxLayout(holder)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.addWidget(button)
-        row.addStretch(1)
-        return holder
+        return self.review_view.line_button(line)
 
     # ---------- довідка ----------
 
@@ -848,165 +569,20 @@ class TaskPanel(QWidget):
     # ---------- підказки ----------
 
     def _build_hints(self, task: Task, hints_used: int) -> None:
-        self._clear_hints()
-        self._hint_widgets.clear()
-
-        hints = list(task.clue_hints) + ([task.solution_hint] if task.solution_hint else [])
-        for index, hint in enumerate(hints, start=1):
-            block, widgets = self._hint_block(index, hint, hints_used)
-            self._hint_widgets.append(widgets)
-            self.hints_box.insertWidget(self.hints_box.count() - 1, block)
+        self.hints_view.build_hints(task, hints_used)
 
     def _hint_block(self, index: int, hint: Hint, hints_used: int) -> tuple[QWidget, dict]:
-        block = QWidget()
-        box = QVBoxLayout(block)
-        box.setContentsMargins(0, 0, 0, 0)
-        box.setSpacing(6)
-
-        button = QToolButton()
-        button.setCheckable(True)
-        button.setCursor(Qt.CursorShape.PointingHandCursor)
-        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-        button.setText(f"Підказка {index} · {hint.title}")
-        button.setStyleSheet(
-            "QToolButton { text-align: left; padding: 9px 12px; border-radius: 8px; "
-            f"background: {Colors.elevated}; border: 1px solid {Colors.border}; "
-            "font-weight: 600; }"
-            f"QToolButton:hover {{ border-color: {Colors.accent}; }}"
-            f"QToolButton:checked {{ border-color: {Colors.accent}; "
-            f"background: {Colors.selection}; }}"
-            f"QToolButton:disabled {{ color: {Colors.muted}; }}"
-        )
-        box.addWidget(button)
-
-        text = AutoHeightText(self._wrap_html(plain_to_html(hint.text)))
-        text.setStyleSheet(
-            f"QTextBrowser {{ background: {Colors.elevated}; "
-            f"border: 1px solid {Colors.border}; border-radius: 8px; "
-            f"color: {Colors.text}; }}"
-        )
-        text.setVisible(False)
-        box.addWidget(text)
-
-        note = QLabel("")
-        note.setObjectName("CheckDetail")
-        note.setWordWrap(True)
-        note.setVisible(bool(hint.solution))
-        box.addWidget(note)
-
-        use_button = QPushButton("Вставити розв'язок у редактор")
-        use_button.setObjectName("Ghost")
-        use_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        use_button.setVisible(False)
-        use_button.clicked.connect(
-            lambda _=False, h=hint: self.solution_use_requested.emit(h.text)
-        )
-        box.addWidget(use_button)
-
-        widgets = {
-            "button": button,
-            "text": text,
-            "note": note,
-            "use_button": use_button,
-            "hint": hint,
-            "index": index,
-        }
-
-        def toggled(checked: bool, item=widgets) -> None:
-            item["text"].setVisible(checked)
-            if checked:
-                self.hint_revealed.emit(item["index"], bool(item["hint"].solution))
-
-        button.toggled.connect(toggled)
-
-        # уже відкриті підказки лишаються відкритими між сесіями — але не під
-        # час холодного повторення: там усе закрито за задумом
-        if index <= hints_used and not hint.solution and not self._locked:
-            button.setChecked(True)
-        return block, widgets
+        return self.hints_view.hint_block(index, hint, hints_used)
 
     def _refresh_lock_state(self) -> None:
-        if self._task is None:
-            return
-        if self._locked:
-            self._lock_everything()
-            return
-
-        needed = self._task.minutes * 60
-        left = max(0.0, needed - self._active_seconds)
-
-        for widgets in self._hint_widgets:
-            hint = widgets["hint"]
-            if not hint.solution:
-                # підказка-орієнтир: пояснення під нею потрібне лише колись
-                widgets["note"].setVisible(False)
-                continue
-            button = widgets["button"]
-            note = widgets["note"]
-            if left <= 0:
-                button.setEnabled(True)
-                button.setText(f'Підказка {widgets["index"]} · {hint.title}')
-                note.setText(
-                    "Розв'язок відкрито після достатньої роботи над задачею. "
-                    "Подивись — і спробуй переписати код своїми руками."
-                )
-                widgets["use_button"].setVisible(True)
-            else:
-                button.setEnabled(False)
-                widgets["use_button"].setVisible(False)
-                button.setChecked(False)
-                widgets["text"].setVisible(False)
-                button.setText(
-                    f'Підказка {widgets["index"]} · розв\'язок — заблоковано'
-                )
-                note.setText(
-                    f"Відкриється через {_format_time(left)} активної роботи над "
-                    f"задачею (з {self._task.minutes} хв). Працювало: "
-                    f"{_format_time(self._active_seconds)}."
-                )
+        self.hints_view.refresh_lock_state()
 
     def _lock_everything(self) -> None:
-        """Холодне повторення: жодна підказка не відкривається, розв'язок теж.
-
-        Перевірки при цьому лишаються доступними: людина має здати задачу
-        так, як згадала, і вже вердикт скаже, чи справді пам'ятає.
-        """
-        for widgets in self._hint_widgets:
-            button = widgets["button"]
-            button.setChecked(False)
-            button.setEnabled(False)
-            button.setText(
-                f'Підказка {widgets["index"]} · недоступна в холодному повторенні'
-            )
-            widgets["text"].setVisible(False)
-            widgets["use_button"].setVisible(False)
-
-            note = widgets["note"]
-            note.setVisible(True)
-            if widgets["hint"].solution:
-                note.setText(
-                    "Розв'язок повернеться, щойно завершиш холодне повторення."
-                )
-            else:
-                note.setText(
-                    "Холодне повторення: спершу згадай сам. Підказки "
-                    "повернуться після спроби."
-                )
+        """Холодне повторення: жодна підказка не відкривається, розв'язок теж."""
+        self.hints_view.lock_everything()
 
     def _refresh_xp(self, xp_preview: int | None, hints_used: int) -> None:
-        if self._task is None:
-            self.xp_label.setText("")
-            return
-        parts = []
-        if xp_preview is not None:
-            parts.append(f"Здаси зараз — отримаєш {xp_preview} XP")
-        # базу показуємо лише тоді, коли вона відрізняється від поточної —
-        # інакше рядок просто повторює сам себе
-        if xp_preview is None or xp_preview != self._task.base_xp:
-            parts.append(f"база {self._task.base_xp} XP")
-        if hints_used:
-            parts.append(f"підказок відкрито: {hints_used}")
-        self.xp_label.setText(" · ".join(parts))
+        self.hints_view.refresh_xp(xp_preview, hints_used)
 
     # ---------- службове ----------
 

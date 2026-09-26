@@ -28,9 +28,11 @@ def main() -> int:
     )
     print(f"Роадмап оновлено: {target}")
 
-    snapshot = ROOT / "progress.json"
-    snapshot.write_text(
-        json.dumps(db.snapshot(), ensure_ascii=False, indent=2), encoding="utf-8"
+    from trainer.paths import atomic_write_text
+
+    snapshot = atomic_write_text(
+        ROOT / "progress.json",
+        json.dumps(db.snapshot(), ensure_ascii=False, indent=2),
     )
     print(f"Прогрес збережено: {snapshot}")
     db.close()

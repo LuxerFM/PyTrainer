@@ -272,10 +272,10 @@ def weekly_digest(db, *, today: date | None = None, days: int = DAYS) -> WeeklyD
 
 def write_digest(path: str | Path, digest: WeeklyDigest,
                  *, generated: datetime | None = None) -> Path:
-    """Зберігає звіт у файл (markdown) і повертає шлях до нього."""
-    target = Path(path)
-    target.write_text(digest.as_markdown(generated=generated), encoding="utf-8")
-    return target
+    """Зберігає звіт у файл (markdown, атомарно) і повертає шлях до нього."""
+    from ..paths import atomic_write_text
+
+    return atomic_write_text(path, digest.as_markdown(generated=generated))
 
 
 __all__ = [

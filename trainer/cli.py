@@ -21,6 +21,12 @@ import sys
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv if argv is None else argv)
 
+    if "--version" in argv or "-V" in argv:
+        from .core.crashlog import version_line
+
+        print(version_line())
+        return 0
+
     # Найперше — тека даних: шлях до бази обчислюється під час імпорту
     # `trainer.core.db`, тому `--data-dir` має бути врахований раніше.
     from .paths import apply_data_dir
@@ -35,6 +41,9 @@ def main(argv: list[str] | None = None) -> int:
     from .core.selfcheck import FLAG as TEST_FLAG, main as test_main
 
     if TEST_FLAG in argv:
+        from .core.crashlog import setup_crashlog
+
+        setup_crashlog()
         return test_main(argv)
 
     from .app import main as window_main
