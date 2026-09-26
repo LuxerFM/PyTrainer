@@ -165,6 +165,8 @@ class SideNav(QWidget):
     """Колонка зліва: шапка з прогресом, перемикач режимів і сторінки."""
 
     task_selected = Signal(str)
+    cold_review_requested = Signal()
+    digest_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -193,6 +195,8 @@ class SideNav(QWidget):
         self.tree.task_selected.connect(self.task_selected.emit)
         self.reviews.task_selected.connect(self.task_selected.emit)
         self.plan.task_selected.connect(self.task_selected.emit)
+        self.reviews.cold_review_requested.connect(self.cold_review_requested.emit)
+        self.stats.digest_requested.connect(self.digest_requested.emit)
 
     # ---------- шапка ----------
 
@@ -344,6 +348,9 @@ class SideNav(QWidget):
                   xp_by_day: dict[str, int] | None = None) -> None:
         self.stats.set_data(overall, weak, activity, xp, streak, active_seconds,
                             xp_by_day)
+
+    def set_digest_summary(self, digest) -> None:
+        self.stats.set_digest_summary(digest)
 
     def set_plan(self, plan) -> None:
         self.plan.set_plan(plan)

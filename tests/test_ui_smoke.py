@@ -25,8 +25,9 @@ from PySide6.QtWidgets import (  # noqa: E402
 
 from curriculum import find_task, study_tasks, topic_of  # noqa: E402
 from trainer.core.db import Database  # noqa: E402
+from trainer.core.review import cold_seconds  # noqa: E402
 from trainer.ui.main_window import MainWindow  # noqa: E402
-from trainer.ui.task_panel import TAB_HINTS  # noqa: E402
+from trainer.ui.task_panel import TAB_HINTS, TAB_REVIEW  # noqa: E402
 from trainer.ui.theme import Colors, apply_theme, scale, set_scale  # noqa: E402
 
 
@@ -75,6 +76,33 @@ class UiSmokeTests(unittest.TestCase):
             if widget is not None:
                 cards.append(widget)
         return cards
+
+    def _review_text(self) -> str:
+        """Увесь текст із карток розбору коду — щоб шукати в ньому підрядок."""
+        parts = []
+        for card in self.window.panel.review_cards:
+            for label in card.findChildren(QLabel):
+                parts.append(label.text())
+            for button in card.findChildren(QPushButton):
+                parts.append(button.text())
+        return " | ".join(parts)
+
+    SLOPPY = (
+        "import math\n"
+        "import random\n"
+        "\n\n"
+        "def AvgOfMarks(marks):\n"
+        "    total = 0\n"
+        "    for i in range(len(marks)):\n"
+        "        total = total + marks[i]\n"
+        "    avg = total / len(marks)\n"
+        "    if avg == None:\n"
+        "        return 0\n"
+        "    if avg >= 4.5:\n"
+        "        return True\n"
+        "    else:\n"
+        "        return False\n"
+    )
 
     def _card_text(self) -> str:
         """Увесь текст із карток перевірок — щоб шукати в ньому підрядок."""
@@ -127,6 +155,240 @@ class UiSmokeTests(unittest.TestCase):
     def test_stdin_fixture_is_shown(self):
         self.window.open_task("w1-input")
         self.assertIn("Аня", self.window.stdin_label.text())
+
+    # ---------- розбір коду (вкладка «Рев'ю») ----------
+
+    def test_review_tab_waits_until_there_is_something_to_review(self):
+        self.assertEqual(self.window.panel.tabs.tabText(TAB_REVIEW), "Рев'ю")
+        self.assertEqual(self.window.panel.review_cards, [])
+
+        self.window.panel.review_requested.emit()
+
+        self.assertIn("заготовка", self.window.panel.review_summary.text())
+        self.assertEqual(self.window.panel.review_cards, [])
+
+    def test_written_code_gets_remarks_with_line_buttons(self):
+        self.window.editor.setPlainText(self.SLOPPY)
+
+        self.window.review_current_code()
+
+        self.assertEqual(self.window.panel.tabs.currentIndex(), TAB_REVIEW)
+        self.assertEqual(self.window.panel.tabs.tabText(TAB_REVIEW), "Рев'ю · 6")
+        text = self._review_text()
+        for expected in ("Імпорт `math`", "не за домовленістю", "range(len",
+                         "None", "return умова"):
+            self.assertIn(expected, text)
+        self.assertIn("6 зауважень", self.window.panel.review_summary.text())
+
+    def test_line_button_moves_the_cursor(self):
+        self.window.editor.setPlainText(self.SLOPPY)
+        self.window.review_current_code()
+
+        card = self.window.panel.review_cards[0]
+        button = card.findChild(QPushButton)
+        self.assertIn("Рядок 1", button.text())
+        button.click()
+
+        self.assertEqual(self.window.editor.textCursor().blockNumber(), 0)
+        self.assertIn("Рядок 1", self.window.status_msg.text())
+
+    def test_clean_code_earns_praise_not_remarks(self):
+        self.window.editor.setPlainText(
+            'def average_marks(marks):\n'
+            '    """Середній бал."""\n'
+            '    if not marks:\n'
+            '        return None\n'
+            '    return sum(marks) / len(marks)\n'
+        )
+
+        self.window.review_current_code()
+
+        self.assertEqual(self.window.panel.tabs.tabText(TAB_REVIEW), "Рев'ю")
+        self.assertIn("Жодних зауважень", self.window.panel.review_summary.text())
+        self.assertIn("описана", self._review_text())
+
+    def test_review_refreshes_itself_after_a_run(self):
+        self.window.run_checks()          # у редакторі заготовка
+        self._wait_for_run()
+        self.assertIn("заготовка", self.window.panel.review_summary.text())
+
+        self.window.editor.setPlainText("import random\nprint('готово')\n")
+        self.window.run_code_only()
+        self._wait_for_run()
+
+        self.assertEqual(self.window.panel.tabs.tabText(TAB_REVIEW), "Рев'ю · 1")
+        self.assertIn("random", self._review_text())
+
+    def test_review_does_not_blame_imports_of_hidden_checks(self):
+        """`BASE_URL` потрібний перевіркам — радити його прибрати не можна."""
+        self.window.open_task("m3-http")
+        self.window.editor.setPlainText(
+            self.window._task.starter + "\nprint('перевіряю')\n"
+        )
+
+        self.window.review_current_code()
+
+        self.assertNotIn("BASE_URL", self._review_text())
+
+    def test_switching_task_forgets_the_previous_review(self):
+        self.window.editor.setPlainText("import random\nprint('готово')\n")
+        self.window.review_current_code()
+        self.assertEqual(self.window.panel.tabs.tabText(TAB_REVIEW), "Рев'ю · 1")
+
+        self.window.open_task("w2-for")
+
+        self.assertEqual(self.window.panel.tabs.tabText(TAB_REVIEW), "Рев'ю")
+        self.assertEqual(self.window.panel.review_cards, [])
+        self.assertIn("Натисни", self.window.panel.review_summary.text())
+
+    # ---------- холодне повторення ----------
+
+    def _solve(self, task_id: str, *, due_in: int | None = None) -> None:
+        """Здає задачу без вікна — так, як це зробив би тренажер."""
+        self.db.mark_solved(task_id, 100)
+        self.db.add_active_seconds(task_id, 600)
+        if due_in is not None:
+            self.db.schedule_review(task_id, due_in, 0)
+        self.window._refresh_all()
+
+    def test_cold_review_starts_from_the_stub_with_hints_locked(self):
+        self.window.open_task("w2-for")   # щоб здана задача не була відкритою
+        self._solve("w1-hello")
+        saved = "print('мій розвʼязок')"
+        self.db.save_code("w1-hello", saved)
+
+        self.window.start_cold_review()
+
+        self.assertTrue(self.window._review_mode)
+        self.assertEqual(self.window._task.id, "w1-hello")
+        self.assertEqual(self.window.editor.toPlainText(),
+                         find_task("w1-hello").starter)
+        self.assertTrue(self.window.panel.locked)
+        self.assertFalse(self.window.panel.cold_note.isHidden())
+        self.assertFalse(self.window.btn_hint.isEnabled())
+        self.assertEqual(self.window.panel.tabs.tabText(TAB_HINTS), "Підказки 🔒")
+        self.assertEqual(self.window._cold_left, cold_seconds(self.window._task))
+        self.assertIn("Холодне повторення", self.window.timer_label.text())
+        self.assertIn("випадкова зі зданих", self.window.status_msg.text())
+        for widgets in self.window.panel._hint_widgets:
+            self.assertFalse(widgets["button"].isEnabled())
+
+    def test_cold_review_does_not_reveal_previously_used_hints(self):
+        self._solve("w1-input")
+        self.db.reveal_hint("w1-input", 3)
+
+        self.window.start_cold_review()
+
+        self.assertTrue(self.window.panel._hint_widgets)
+        self.assertFalse(any(widgets["button"].isChecked()
+                             for widgets in self.window.panel._hint_widgets))
+        self.assertTrue(all(widgets["text"].isHidden()
+                            for widgets in self.window.panel._hint_widgets))
+
+    def test_cold_review_button_sits_on_the_review_page(self):
+        self.window.open_task("w2-for")
+        self._solve("w1-hello")
+        self.window.sidebar.reviews.cold_review_requested.emit()
+        self.assertTrue(self.window._review_mode)
+        self.assertEqual(self.window._task.id, "w1-hello")
+
+    def test_cold_review_without_solved_tasks_explains_itself(self):
+        task_id = self.window._task.id
+        self.window.start_cold_review()
+        self.assertFalse(self.window._review_mode)
+        self.assertEqual(self.window._task.id, task_id)
+        self.assertIn("зданих задач", self.window.status_msg.text())
+
+    def test_cold_review_prefers_the_due_queue(self):
+        self._solve("w1-hello")             # здана, але не в черзі
+        self._solve("w1-vars", due_in=0)    # час повторювати вже сьогодні
+
+        self.window.start_cold_review()
+
+        self.assertEqual(self.window._task.id, "w1-vars")
+        self.assertIn("з черги повторень", self.window.status_msg.text())
+
+    def test_cold_clock_counts_down_then_stops_at_zero(self):
+        self.window.open_task("w2-for")
+        self._solve("w1-hello")
+        self.window.start_cold_review()
+        limit = cold_seconds(self.window._task)
+
+        self.window._advance_cold(60)
+        self.assertEqual(self.window._cold_left, limit - 60)
+        self.assertIn("лишилось", self.window.timer_label.text())
+
+        self.window._advance_cold(limit)
+        self.assertEqual(self.window._cold_left, 0)
+        self.assertIn("час вийшов", self.window.timer_label.text())
+
+    def test_failed_cold_review_queues_task_and_keeps_the_saved_code(self):
+        self._solve("w1-vars")
+        saved = "print('код, який шкода втратити')"
+        self.db.save_code("w1-vars", saved)
+
+        self.window.start_cold_review()
+        self.window.run_checks()          # у редакторі заготовка → не пройде
+        self._wait_for_run()
+
+        self.assertEqual(self.db.saved_code("w1-vars"), saved)
+        review = self.db.review("w1-vars")
+        self.assertIsNotNone(review, "провал має повернути задачу в чергу")
+        self.assertEqual(review["interval_index"], 0)
+        self.assertFalse(self.window._review_mode)
+        self.assertFalse(self.window.panel.locked)
+        self.assertTrue(self.window.btn_hint.isEnabled())
+        self.assertIn("не згадав", self.window.console.toPlainText())
+
+    def test_cold_review_pass_moves_the_queue_forward(self):
+        self._solve("w2-for", due_in=0)
+
+        self.window.start_cold_review()
+        self.assertEqual(self.window._task.id, "w2-for")
+        self.window.editor.setPlainText(find_task("w2-for").solution_hint.text)
+        self.window.run_checks()
+        self._wait_for_run()
+
+        self.assertEqual(self.db.review("w2-for")["interval_index"], 1)
+        self.assertGreater(self.db.bonus_xp("w2-for"), 0)
+        self.assertIn("бонус за повторення", self.window.console.toPlainText())
+        self.assertIn("Холодне повторення: згадав", self.window.console.toPlainText())
+
+    def test_cold_review_survives_a_theme_switch(self):
+        """Ctrl+D посеред спроби не має стирати написане й обнуляти таймер.
+
+        У холодному повторенні код не зберігається в базу — тому перемальовку
+        вікна він має пережити в редакторі.
+        """
+        self.window.open_task("w2-for")
+        self._solve("w1-hello")
+        self.window.start_cold_review()
+        self.window.editor.setPlainText("print('почав згадувати')")
+        self.window._advance_cold(120)
+        left = self.window._cold_left
+
+        self.window.toggle_theme()
+
+        self.assertTrue(self.window._review_mode)
+        self.assertEqual(self.window.editor.toPlainText(), "print('почав згадувати')")
+        self.assertEqual(self.window._cold_left, left)
+        self.assertTrue(self.window.panel.locked)
+        self.assertFalse(self.window.btn_hint.isEnabled())
+        self.window.toggle_theme()      # повертаємо тему, як було
+
+    def test_cold_review_of_mastered_task_keeps_it_mastered(self):
+        self.window.open_task("w2-for")          # щоб w1-hello не був відкритою
+        self._solve("w1-hello")                  # здана чисто, поза чергою
+
+        self.window.start_cold_review()
+        self.assertEqual(self.window._task.id, "w1-hello")
+        self.window.editor.setPlainText(find_task("w1-hello").solution_hint.text)
+        self.window.run_checks()
+        self._wait_for_run()
+
+        self.assertIsNone(self.db.review("w1-hello"))
+        self.assertTrue(self.window.session.is_mastered("w1-hello"))
+        self.assertGreater(self.db.bonus_xp("w1-hello"), 0)
 
     def test_task_with_files_shows_them(self):
         self.window.open_task("m2-module")
@@ -312,10 +574,10 @@ class UiSmokeTests(unittest.TestCase):
         self.assertNotIn("Перейти до рядка", self._card_text())
 
     def test_solved_task_leaves_the_mistake_log(self):
-        """Журнал показує лише те, що ще варто виправити.
+        """Галочка «зроблено поза тренажером» закриває помилку.
 
-        Якщо задачу згодом здано — помилка вже не «висить», і тримати її
-        в списку означало б плутати людину замість допомагати.
+        Задачу могли розв'язати в своєму редакторі — тримати її в списку
+        означало б плутати людину замість допомагати.
         """
         self.db.record_attempt("w1-hello", ok=False, with_checks=True,
                                failed_check="виводить привітання",
@@ -326,6 +588,195 @@ class UiSmokeTests(unittest.TestCase):
         self.db.mark_solved("w1-hello", 100)
         self.window._refresh_all()
         self.assertEqual(self.window.sidebar.reviews.mistakes_list.count(), 0)
+
+    def test_mistake_closed_with_help_stays_visible(self):
+        """«Здав» і «здав сам» — різні речі: підказка лишає помилку в списку.
+
+        Раніше задача, здана з підказкою, зникала з журналу разом із
+        проблемою, яку ще варто повторити.
+        """
+        self.db.record_attempt("w1-hello", ok=False, with_checks=True,
+                               failed_check="виводить привітання",
+                               error_kind="NameError")
+        self.db.reveal_hint("w1-hello", 1)
+        self.db.record_attempt("w1-hello", ok=True, with_checks=True, xp=50,
+                               clean=False)
+        self.db.mark_solved("w1-hello", 100)
+        self.window._refresh_all()
+
+        widget = self.window.sidebar.reviews.mistakes_list
+        self.assertEqual(widget.count(), 1)
+        self.assertIn("закрито з допомогою", widget.item(0).text())
+        self.assertIn("холодним повторенням",
+                      self.window.sidebar.reviews.mistakes_note.text())
+
+    def test_clean_pass_removes_the_mistake(self):
+        """А чистий прохід — справжнє закриття: без підказок, без розв'язку."""
+        self.db.record_attempt("w1-hello", ok=False, with_checks=True,
+                               failed_check="виводить привітання",
+                               error_kind="NameError")
+        self.db.record_attempt("w1-hello", ok=True, with_checks=True, xp=100,
+                               clean=True)
+        self.db.mark_solved("w1-hello", 100)
+        self.window._refresh_all()
+        self.assertEqual(self.window.sidebar.reviews.mistakes_list.count(), 0)
+
+    def test_open_mistake_is_listed_before_a_helped_one(self):
+        """Спершу те, що ще висить; жовте — після нього, щоб не затуляло."""
+        self.db.record_attempt("w1-hello", ok=False, with_checks=True,
+                               error_kind="NameError")
+        self.db.record_attempt("w1-vars", ok=False, with_checks=True,
+                               error_kind="SyntaxError")
+        self.db.reveal_hint("w1-vars", 1)
+        self.db.record_attempt("w1-vars", ok=True, with_checks=True, clean=False)
+        self.db.mark_solved("w1-vars", 100)
+        self.window._refresh_all()
+
+        widget = self.window.sidebar.reviews.mistakes_list
+        self.assertEqual(widget.count(), 2)
+        self.assertIn("Перший вивід", widget.item(0).text())
+        self.assertIn("Змінні", widget.item(1).text())
+
+    # ---------- тижневий огляд ----------
+
+    def test_stats_page_has_the_digest_entry(self):
+        stats = self.window.sidebar.stats
+        self.assertIn("занять ще не було", stats.digest_line.text())
+
+        stats.digest_button.click()
+        self.assertIsNotNone(self.window.digest_dialog)
+        self.assertFalse(self.window.digest_dialog.isHidden())
+
+    def test_digest_shows_the_week_numbers(self):
+        self.db.record_attempt("w1-hello", ok=True, with_checks=True, xp=100,
+                               clean=True)
+        self.db.mark_solved("w1-hello", 100)
+        self.window.show_digest()
+
+        dialog = self.window.digest_dialog
+        self.assertIn("Тиждень", dialog.title.text())
+        self.assertEqual(dialog.cards["checks"].text(), "1")
+        self.assertEqual(dialog.cards["passes"].text(), "1")
+        self.assertEqual(dialog.cards["solved"].text(), "1")
+        solved = dialog.solved_list.item(0).text()
+        self.assertIn(find_task("w1-hello").title, solved)
+
+    def test_digest_is_reused_and_refreshed(self):
+        """Вікно не плодиться, а цифри в ньому не застигають."""
+        self.window.show_digest()
+        first = self.window.digest_dialog
+        self.assertEqual(first.cards["checks"].text(), "0")
+
+        self.db.record_attempt("w1-hello", ok=True, with_checks=True, xp=100,
+                               clean=True)
+        self.window._refresh_all()
+        self.window.show_digest()
+
+        self.assertIs(first, self.window.digest_dialog)
+        self.assertEqual(first.cards["checks"].text(), "1")
+        self.assertIn("1 перевірка", self.window.sidebar.stats.digest_line.text())
+
+    def test_digest_row_click_opens_the_task(self):
+        self.db.record_attempt("w1-hello", ok=False, with_checks=True,
+                               failed_check="виводить привітання",
+                               error_kind="NameError")
+        self.window.open_task("w1-vars")
+        self.window.show_digest()
+
+        dialog = self.window.digest_dialog
+        dialog.mistakes_list.itemClicked.emit(dialog.mistakes_list.item(0))
+
+        self.assertEqual(self.window._task.id, "w1-hello")
+        self.assertIsNone(self.window.digest_dialog)     # вікно відступило
+
+    def test_digest_actions_include_due_reviews_and_tolerate_a_click(self):
+        """Рядок «повторити» не веде до конкретної задачі — і не має падати."""
+        today = self.db.connection.execute(
+            "SELECT DATE('now') AS day"
+        ).fetchone()["day"]
+        self.db.connection.execute(
+            "INSERT OR REPLACE INTO reviews (task_id, due_date, interval_index,"
+            " updated_at) VALUES ('w1-hello', ?, 0, ?)",
+            (today, f"{today} 20:00:00"),
+        )
+        self.db.connection.commit()
+        self.window.show_digest()
+
+        dialog = self.window.digest_dialog
+        rows = [dialog.actions_list.item(index)
+                for index in range(dialog.actions_list.count())]
+        review_row = [row for row in rows if "Повторити" in row.text()]
+        self.assertEqual(len(review_row), 1)
+
+        dialog._on_clicked(review_row[0])
+        self.assertIsNotNone(self.window.digest_dialog)   # вікно лишилось
+
+    def test_digest_offers_a_task_from_the_weakest_topic(self):
+        """Огляд не лише констатує слабку тему, а дає задачу для неї."""
+        for _ in range(3):
+            self.db.record_attempt("w1-arith", ok=False, with_checks=True,
+                                   error_kind="SyntaxError")
+        self.window.show_digest()
+
+        rows = [self.window.digest_dialog.actions_list.item(index).text()
+                for index in range(self.window.digest_dialog.actions_list.count())]
+        weak = [row for row in rows if "Слабка тема" in row]
+        self.assertEqual(len(weak), 1)
+        self.assertIn(topic_of("w1-arith"), weak[0])
+        self.assertIn(find_task("w1-hello").title, weak[0])
+
+    def test_digest_tolerates_a_mistake_from_an_unknown_task(self):
+        """У журналі могла лишитись задача, якої вже немає в курсі."""
+        self.db.record_attempt("gone-task", ok=False, with_checks=True,
+                               error_kind="NameError")
+        self.window.show_digest()
+        row = self.window.digest_dialog.mistakes_list.item(0).text()
+        self.assertIn("gone-task", row)
+
+    def test_digest_report_saves_to_a_file(self):
+        self.window.show_digest()
+        target = Path(self.tmp.name) / "week.md"
+        original = QFileDialog.getSaveFileName
+        QFileDialog.getSaveFileName = staticmethod(lambda *args, **kwargs: (str(target), ""))
+        try:
+            self.window.digest_dialog.save_report()
+        finally:
+            QFileDialog.getSaveFileName = original
+
+        self.assertTrue(target.exists())
+        saved = target.read_text(encoding="utf-8")
+        self.assertIn("Тиждень", saved)
+        self.assertIn("## Що робити далі", saved)
+        self.assertEqual(self.window.digest_dialog.saved_note.text(),
+                         "Збережено: week.md")
+
+    def test_digest_save_can_be_cancelled(self):
+        self.window.show_digest()
+        original = QFileDialog.getSaveFileName
+        QFileDialog.getSaveFileName = staticmethod(lambda *args, **kwargs: ("", ""))
+        try:
+            self.window.digest_dialog.save_report()
+        finally:
+            QFileDialog.getSaveFileName = original
+        self.assertEqual(self.window.digest_dialog.saved_note.text(), "")
+
+    def test_digest_save_reports_an_unwritable_path(self):
+        self.window.show_digest()
+        warnings = []
+        warn = QMessageBox.warning
+        QMessageBox.warning = staticmethod(lambda *args, **kwargs: warnings.append(args))
+        original = QFileDialog.getSaveFileName
+        QFileDialog.getSaveFileName = staticmethod(
+            lambda *args, **kwargs: (self.tmp.name, "")   # тека, а не файл
+        )
+        try:
+            self.window.digest_dialog.save_report()
+        finally:
+            QFileDialog.getSaveFileName = original
+            QMessageBox.warning = warn
+
+        self.assertTrue(warnings, "про невдалий запис ніхто не сказав")
+        self.assertEqual(self.window.digest_dialog.saved_note.text(), "")
 
     # ---------- слабкі теми й графік ----------
 

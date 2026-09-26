@@ -3,6 +3,10 @@
 Правило просте: якщо задачу здав не з першого разу, завалив або підглянув
 розв'язок — вона повертається через 1 день, потім через 3, потім через 7,
 потім через 30. Так знання не вивітрюються.
+
+Тут же — вхід у холодне повторення: випадкова вже здана задача без підказок
+і розв'язку. Звичайне повторення показує знайомий код, а холодне змушує
+згадати його з нуля.
 """
 
 from __future__ import annotations
@@ -13,6 +17,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
@@ -24,6 +29,7 @@ class ReviewPage(QWidget):
     """Список задач на повторення: сьогодні і найближчим часом."""
 
     task_selected = Signal(str)
+    cold_review_requested = Signal()   # «дай випадкову здану задачу без підказок»
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -38,6 +44,19 @@ class ReviewPage(QWidget):
         self.hint_label.setObjectName("Subtle")
         self.hint_label.setWordWrap(True)
         box.addWidget(self.hint_label)
+
+        self.cold_button = QPushButton("❄  Холодне повторення: випадкова задача")
+        self.cold_button.setObjectName("Ghost")
+        self.cold_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.cold_button.setToolTip(
+            "Уже здана задача без підказок і розв'язку, з таймером. "
+            "Вердикт іде в чергу повторень: згадав — інтервал довший, "
+            "не згадав — задача повертається завтра."
+        )
+        self.cold_button.clicked.connect(
+            lambda _=False: self.cold_review_requested.emit()
+        )
+        box.addWidget(self.cold_button)
         box.addSpacing(4)
 
         self.today_title = QLabel("СЬОГОДНІ")
@@ -117,18 +136,42 @@ class ReviewPage(QWidget):
 
     # ---------- журнал помилок ----------
 
+    MISTAKE_COLOUR = {"open": Colors.error, "helped": Colors.warn}
+
     def set_mistakes(self, rows: list[dict]) -> None:
-        """Останні помилки: текст помилки, скільки разів і коли."""
+        """Останні помилки: текст помилки, скільки разів і чи вже закрито.
+
+        Два кольори не для краси: червоне — ще «висить», жовте — закрито, але
+        з опорою (підказкою чи розв'язком), тому задача просить холодного
+        повторення. Без цієї різниці список довелося б або чистити цілком,
+        або тримати в ньому все назавжди.
+        """
         self.mistakes_list.clear()
+        helped = False
         for row in rows:
-            item = QListWidgetItem(
+            status = row.get("status", "open")
+            helped = helped or status == "helped"
+            label = row.get("status_label", "")
+            line = (
                 f'{row["title"]}\n'
                 f'{row["kind"]} · {row["times"]}× · {row["when"]}'
             )
+            if label:
+                line += f" · {label}"
+            item = QListWidgetItem(line)
             item.setData(Qt.ItemDataRole.UserRole, row["task_id"])
-            item.setForeground(QColor(Colors.error))
+            item.setForeground(QColor(self.MISTAKE_COLOUR.get(status, Colors.error)))
             item.setToolTip(row.get("tooltip", ""))
             self.mistakes_list.addItem(item)
+
+        self.mistakes_note.setText(
+            "Помилка «висить», доки задачу не здано чистим проходом — без "
+            "підказок і розв'язку. Жовте «закрито з допомогою» означає, що "
+            "задачу варто згадати холодним повторенням."
+            if helped else
+            "Помилка, на якій спіткнувся, — найкорисніше, що є в цьому "
+            "тренажері. Натисни, щоб повернутися до задачі."
+        )
 
         visible = bool(rows)
         self.mistakes_list.setVisible(visible)

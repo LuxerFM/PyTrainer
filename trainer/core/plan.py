@@ -91,7 +91,7 @@ def daily_plan(db, *, budget: int = DEFAULT_BUDGET) -> DailyPlan:
         left -= REVIEW_MINUTES
 
     # 2. Слабка тема, у якій є незадана задача
-    weak = _pick_weak_task(db, statuses)
+    weak = pick_weak_task(db, statuses)
     if weak is not None and left > 10:
         task, topic_name, rate = weak
         plan.steps.append(PlanStep(
@@ -126,7 +126,7 @@ def daily_plan(db, *, budget: int = DEFAULT_BUDGET) -> DailyPlan:
     return plan
 
 
-def _pick_weak_task(db, statuses):
+def pick_weak_task(db, statuses):
     """Перша незадана задача з найслабшої теми (None, якщо таких немає)."""
     weak = weak_topics(db.task_results())
     by_topic: dict[str, list] = {}
@@ -140,4 +140,5 @@ def _pick_weak_task(db, statuses):
     return None
 
 
-__all__ = ["DailyPlan", "PlanStep", "daily_plan", "DEFAULT_BUDGET"]
+__all__ = ["DailyPlan", "PlanStep", "daily_plan", "DEFAULT_BUDGET",
+           "pick_weak_task"]

@@ -16,13 +16,24 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
+from ..core.digest import WeeklyDigest
 from .theme import Colors
 
 WEEKS = 8
+
+
+def _plural(count: int, one: str, few: str, many: str) -> str:
+    """«1 перевірка», «2 перевірки», «5 перевірок» — інакше рядок читається як машинний."""
+    if count % 10 == 1 and count % 100 != 11:
+        return one
+    if count % 10 in (2, 3, 4) and count % 100 not in (12, 13, 14):
+        return few
+    return many
 
 
 class ActivityGrid(QWidget):
@@ -132,9 +143,10 @@ class XpChart(QWidget):
 
 
 class StatsPage(QWidget):
-    """Картки + слабкі теми + календар."""
+    """Картки + слабкі теми + календар + вхід у тижневий огляд."""
 
     topic_practice_requested = Signal(str)
+    digest_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -158,6 +170,23 @@ class StatsPage(QWidget):
             self.cards[key] = value_label
             grid.addWidget(card, index // 2, index % 2)
         box.addLayout(grid)
+
+        self.digest_button = QPushButton("Тижневий огляд · 7 днів")
+        self.digest_button.setObjectName("Ghost")
+        self.digest_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.digest_button.setToolTip(
+            "Що сталося за тиждень: скільки здано, на чому спіткнувся, "
+            "що робити далі. Звіт можна зберегти файлом."
+        )
+        self.digest_button.clicked.connect(
+            lambda _=False: self.digest_requested.emit()
+        )
+        box.addWidget(self.digest_button)
+
+        self.digest_line = QLabel("")
+        self.digest_line.setObjectName("Subtle")
+        self.digest_line.setWordWrap(True)
+        box.addWidget(self.digest_line)
 
         weak_title = QLabel("СЛАБКІ МІСЦЯ")
         weak_title.setObjectName("SectionTitle")
@@ -247,6 +276,24 @@ class StatsPage(QWidget):
 
         self.activity.set_activity(activity)
         self.xp_chart.set_data(xp_by_day or {})
+
+    def set_digest_summary(self, digest: WeeklyDigest) -> None:
+        """Один рядок про тиждень — щоб огляд не губився за кнопкою.
+
+        Повний звіт відкривається кнопкою, але найважливіше видно вже тут:
+        скільки перевірок було і скільки помилок ще не закрито.
+        """
+        if not digest.active:
+            self.digest_line.setText("Цього тижня занять ще не було.")
+            return
+        open_count = len(digest.open_mistakes)
+        self.digest_line.setText(
+            f"Тиждень: {digest.checks} "
+            f"{_plural(digest.checks, 'перевірка', 'перевірки', 'перевірок')} "
+            f"({digest.passes} успішних) · здано {len(digest.solved)} · "
+            f"відкрито {open_count} "
+            f"{_plural(open_count, 'помилка', 'помилки', 'помилок')}"
+        )
 
     def _on_weak_clicked(self, item: QListWidgetItem) -> None:
         name = item.data(Qt.ItemDataRole.UserRole)

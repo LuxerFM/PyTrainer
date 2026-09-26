@@ -124,6 +124,14 @@ class StudySession:
         update.first_try = not solved_before
         xp = self.preview_xp(task)
 
+        # «Чисто» — здано без підказок і без вставленого розв'язку. За цією
+        # ознакою журнал помилок вирішує, що закрито по-справжньому.
+        clean = (
+            result.all_passed
+            and self.db.hints_used(task.id) == 0
+            and not self.db.solution_used(task.id)
+        )
+
         # Пишемо в журнал не лише «не здав», а й на чому саме спіткнувся —
         # з цього потім складається список «твої помилки».
         self.db.record_attempt(
@@ -133,6 +141,7 @@ class StudySession:
             xp=xp if result.all_passed else 0,
             failed_check=result.first_failed_check,
             error_kind=result.failure_kind,
+            clean=clean,
         )
 
         if result.all_passed:
@@ -158,20 +167,31 @@ class StudySession:
         """Оновлює чергу повторень і нараховує XP за повторення."""
         if review_mode:
             previous = self.db.review(task.id)
-            depth = previous["interval_index"] if previous else -1
-            index, days = self.db.schedule_from_result(task.id, True)
-            update.review_index = index
+            if previous is None:
+                # Задача вже поза чергою (утримана). Успішне холодне згадування
+                # не повертає її в розклад — інакше «утримано» ламалося б від
+                # кожного тренування — лише дає найщедріший бонус, як за
+                # найдовший витриманий інтервал.
+                depth = len(scoring.INTERVALS) - 1
+                days = None
+                update.review_index = 0
+            else:
+                depth = max(0, previous["interval_index"])
+                index, days = self.db.schedule_from_result(task.id, True)
+                update.review_index = index
             update.review_days = days
 
             bonus = scoring.review_xp(
                 task,
-                interval_index=max(0, depth),
+                interval_index=depth,
                 hints_used=self.db.hints_used(task.id),
                 solution_used=self.db.solution_used(task.id),
             )
             self.db.add_bonus_xp(task.id, bonus)
             update.bonus_xp = bonus
-            if days is None:
+            if previous is None:
+                update.notes.append("задачу вже утримано — черга не змінилась")
+            elif days is None:
                 update.notes.append("усі повторення пройдено — задачу засвоєно")
             else:
                 update.notes.append(f"наступне повторення через {days} дн.")

@@ -6,12 +6,17 @@
 * **Задача** — умова гарним текстом (окремий шрифт для прози й для коду);
 * **Тести** — що саме перевірять *до* запуску і що з цього вийшло *після*,
   плюс людське пояснення помилки замість англійського traceback;
+* **Рев'ю** — розбір самого коду: що в ньому не так і як зробити краще;
 * **Довідка** — міні-шпаргалка, підібрана під тему задачі;
 * **Підказки** — підказки за таймером активної роботи (ШІ як вчитель, а не автор);
 * **Історія** — усі запуски й здавання цієї задачі.
 
 Розв'язок заблоковано, поки не набіжить достатньо часу активної роботи над
 задачею. Це прямо реалізує правило з роадмапу: ШІ — вчитель, а не автор коду.
+
+Окремий випадок — холодне повторення (вже здана задача): там підказки й
+розв'язок недоступні зовсім, бо вся вправа в тому, щоб дістати рішення
+з пам'яті, а не впізнати власний код.
 """
 
 from __future__ import annotations
@@ -41,15 +46,17 @@ from PySide6.QtWidgets import (
 from curriculum import cheatsheets
 from curriculum.schema import Check, Hint, Task
 
+from ..core.codereview import NOT_REVIEWED, CodeReview, Remark
 from ..core.runner import RunResult
 from .theme import Colors, mono_family, prose_family, ui_size
 
 # Індекси вкладок — щоб жодне число не «загубилось» у коді вікна.
 TAB_STATEMENT = 0
 TAB_TESTS = 1
-TAB_CHEATSHEET = 2
-TAB_HINTS = 3
-TAB_HISTORY = 4
+TAB_REVIEW = 2
+TAB_CHEATSHEET = 3
+TAB_HINTS = 4
+TAB_HISTORY = 5
 
 
 def _format_time(seconds: float) -> str:
@@ -156,6 +163,7 @@ class TaskPanel(QWidget):
     solution_use_requested = Signal(str)    # людина хоче вставити розв'язок у редактор
     manual_toggle_requested = Signal(str)   # пункт, зроблений поза тренажером
     jump_to_line_requested = Signal(int)    # поставити курсор на рядок з помилкою
+    review_requested = Signal()             # «розбери мій код» (вкладка «Рев'ю»)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -163,6 +171,7 @@ class TaskPanel(QWidget):
         self.setMinimumWidth(360)
 
         self._task: Task | None = None
+        self._locked = False
         self._hint_widgets: list[dict] = []
         self._check_cards: list[QFrame] = []
         self._active_seconds = 0.0
@@ -176,6 +185,7 @@ class TaskPanel(QWidget):
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_statement_tab(), "Задача")
         self.tabs.addTab(self._build_tests_tab(), "Тести")
+        self.tabs.addTab(self._build_review_tab(), "Рев'ю")
         self.tabs.addTab(self._build_cheatsheet_tab(), "Довідка")
         self.tabs.addTab(self._build_hints_tab(), "Підказки")
         self.tabs.addTab(self._build_history_tab(), "Історія")
@@ -257,6 +267,46 @@ class TaskPanel(QWidget):
         box.addWidget(self.tests_detail)
         return page
 
+    def _build_review_tab(self) -> QWidget:
+        page = QWidget()
+        box = QVBoxLayout(page)
+        box.setContentsMargins(14, 12, 14, 12)
+        box.setSpacing(9)
+
+        self.review_summary = QLabel(NOT_REVIEWED)
+        self.review_summary.setObjectName("Subtle")
+        self.review_summary.setWordWrap(True)
+        box.addWidget(self.review_summary)
+
+        self.review_button = QPushButton("Розібрати код")
+        self.review_button.setObjectName("Ghost")
+        self.review_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.review_button.setToolTip(
+            "Розбір не оцінює і не перевіряє: він каже, що в коді буде важко "
+            "читати іншій людині — і як це виправити (F6)"
+        )
+        self.review_button.clicked.connect(
+            lambda _=False: self.review_requested.emit()
+        )
+        holder = QWidget()
+        row = QHBoxLayout(holder)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(self.review_button)
+        row.addStretch(1)
+        box.addWidget(holder)
+
+        self.review_page = QScrollArea()
+        self.review_page.setObjectName("ChecksPage")
+        self.review_page.setWidgetResizable(True)
+        inner = QWidget()
+        self.review_box = QVBoxLayout(inner)
+        self.review_box.setContentsMargins(0, 0, 0, 0)
+        self.review_box.setSpacing(7)
+        self.review_box.addStretch(1)
+        self.review_page.setWidget(inner)
+        box.addWidget(self.review_page, 1)
+        return page
+
     def _build_cheatsheet_tab(self) -> QWidget:
         page = QWidget()
         box = QVBoxLayout(page)
@@ -285,15 +335,32 @@ class TaskPanel(QWidget):
         return page
 
     def _build_hints_tab(self) -> QWidget:
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(14, 12, 14, 0)
+        outer.setSpacing(8)
+
+        # Пояснення холодного повторення живе поза списком підказок: список
+        # перебудовується на кожну задачу, а цей напис має лишатись на місці.
+        self.cold_note = QLabel(
+            "Холодне повторення: підказки й розв'язок недоступні, доки не "
+            "завершиш спробу. Саме в цьому суть — згадати самому."
+        )
+        self.cold_note.setObjectName("Warn")
+        self.cold_note.setWordWrap(True)
+        self.cold_note.setVisible(False)
+        outer.addWidget(self.cold_note)
+
         area = QScrollArea()
         area.setWidgetResizable(True)
-        page = QWidget()
-        self.hints_box = QVBoxLayout(page)
-        self.hints_box.setContentsMargins(14, 12, 14, 12)
+        holder = QWidget()
+        self.hints_box = QVBoxLayout(holder)
+        self.hints_box.setContentsMargins(0, 0, 0, 12)
         self.hints_box.setSpacing(10)
         self.hints_box.addStretch(1)
-        area.setWidget(page)
-        return area
+        area.setWidget(holder)
+        outer.addWidget(area, 1)
+        return page
 
     def _build_history_tab(self) -> QWidget:
         page = QWidget()
@@ -321,9 +388,11 @@ class TaskPanel(QWidget):
         active_seconds: float = 0.0,
         xp_preview: int | None = None,
         position: tuple[int, int] | None = None,
+        locked: bool = False,
     ) -> None:
         self._task = task
         self._active_seconds = active_seconds
+        self.set_locked(locked)
 
         self.title.setText(task.title)
         self.level_badge.setText(task.level)
@@ -335,12 +404,14 @@ class TaskPanel(QWidget):
         self._select_sheet(cheatsheets.pick(task))
         self._build_hints(task, hints_used)
         self._refresh_lock_state()
+        self.reset_review()
         self.tabs.setCurrentIndex(TAB_STATEMENT)
 
     def show_placeholder(self, title: str, message: str, *,
                          task_id: str | None = None, manual_done: bool = False) -> None:
         """Пункт плану, який робиться поза тренажером (venv, Git, pytest)."""
         self._task = None
+        self.set_locked(False)
         self._hint_widgets.clear()
         self.title.setText(title)
         self.level_badge.setText("Виконано поза тренажером" if manual_done else "План")
@@ -359,6 +430,7 @@ class TaskPanel(QWidget):
 
         if task_id:
             self._build_manual_block(task_id, manual_done)
+        self.reset_review()
         self.tabs.setCurrentIndex(TAB_STATEMENT)
 
     @staticmethod
@@ -424,6 +496,20 @@ class TaskPanel(QWidget):
                 )
             self.history_list.addItem(item)
 
+    @property
+    def locked(self) -> bool:
+        """Чи це холодне повторення (підказки й розв'язок вимкнено)."""
+        return self._locked
+
+    def set_locked(self, locked: bool) -> None:
+        """Вмикає/вимикає холодне повторення в панелі підказок."""
+        self._locked = bool(locked)
+        self.cold_note.setVisible(self._locked)
+        self.tabs.setTabText(
+            TAB_HINTS, "Підказки 🔒" if self._locked else "Підказки"
+        )
+        self._refresh_lock_state()
+
     def update_xp_preview(self, xp: int, hints_used: int) -> None:
         """Показує, скільки XP дасть задача з урахуванням відкритих підказок."""
         self._refresh_xp(xp, hints_used)
@@ -445,8 +531,9 @@ class TaskPanel(QWidget):
                 self._drop_widget(widget)
         self._check_cards.clear()
 
-    def _add_card(self, widget: QWidget) -> None:
-        self.checks_box.insertWidget(self.checks_box.count() - 1, widget)
+    def _add_card(self, widget: QWidget, box: QVBoxLayout | None = None) -> None:
+        target = box if box is not None else self.checks_box
+        target.insertWidget(target.count() - 1, widget)
 
     def _check_card(
         self,
@@ -456,6 +543,7 @@ class TaskPanel(QWidget):
         detail: str = "",
         state: str = "pending",
         tooltip: str = "",
+        extra: QWidget | None = None,
     ) -> QFrame:
         """Одна картка: значок стану, назва перевірки й пояснення."""
         card = QFrame()
@@ -504,6 +592,9 @@ class TaskPanel(QWidget):
                 Qt.TextInteractionFlag.TextSelectableByMouse
             )
             column.addWidget(detail_label)
+
+        if extra is not None:
+            column.addWidget(extra)
 
         row.addLayout(column, 1)
         if tooltip:
@@ -666,6 +757,74 @@ class TaskPanel(QWidget):
         """Рядок, на який можна перейти після останнього прогону (0 — немає)."""
         return getattr(self, "_jump_line", 0)
 
+    # ---------- розбір коду ----------
+
+    def show_review(self, review: CodeReview) -> None:
+        """Показує розбір коду: зауваження з номерами рядків і одну похвалу."""
+        self._clear_review()
+        self.review_summary.setText(review.summary)
+        self.review_summary.setObjectName("VerdictOk" if review.ok else "VerdictWarn")
+        self._repolish(self.review_summary)
+
+        for remark in review.remarks:
+            self._add_card(self._review_card(remark), self.review_box)
+
+        issues = len(review.issues)
+        self.tabs.setTabText(TAB_REVIEW, f"Рев'ю · {issues}" if issues else "Рев'ю")
+        self.review_button.setText("Розібрати ще раз")
+
+    def reset_review(self) -> None:
+        """Забуває попередній розбір: для нової задачі він був би брехнею."""
+        self._clear_review()
+        self.review_summary.setText(NOT_REVIEWED)
+        self.review_summary.setObjectName("Subtle")
+        self._repolish(self.review_summary)
+        self.review_button.setText("Розібрати код")
+        self.tabs.setTabText(TAB_REVIEW, "Рев'ю")
+
+    @property
+    def review_cards(self) -> list[QFrame]:
+        """Картки розбору — щоб тести могли їх порахувати."""
+        return [
+            widget
+            for index in range(self.review_box.count())
+            if (widget := self.review_box.itemAt(index).widget()) is not None
+        ]
+
+    def _clear_review(self) -> None:
+        while self.review_box.count() > 1:
+            item = self.review_box.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                self._drop_widget(widget)
+
+    def _review_card(self, remark: Remark) -> QFrame:
+        return self._check_card(
+            mark="✎" if remark.is_praise else "!",
+            name=remark.title,
+            detail=remark.advice,
+            state="ok" if remark.is_praise else "info",
+            tooltip=f"Рядок {remark.line}" if remark.line else "",
+            extra=self._line_button(remark.line),
+        )
+
+    def _line_button(self, line: int) -> QWidget | None:
+        """Кнопка «перейти до рядка» — з зауваження одразу в код."""
+        if not line:
+            return None
+        button = QPushButton(f"↪  Рядок {line}")
+        button.setObjectName("Ghost")
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.clicked.connect(
+            lambda _=False, number=line: self.jump_to_line_requested.emit(number)
+        )
+        holder = QWidget()
+        row = QHBoxLayout(holder)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(button)
+        row.addStretch(1)
+        return holder
+
     # ---------- довідка ----------
 
     def _select_sheet(self, sheet: cheatsheets.CheatSheet) -> None:
@@ -760,20 +919,27 @@ class TaskPanel(QWidget):
 
         button.toggled.connect(toggled)
 
-        # уже відкриті підказки лишаються відкритими між сесіями
-        if index <= hints_used and not hint.solution:
+        # уже відкриті підказки лишаються відкритими між сесіями — але не під
+        # час холодного повторення: там усе закрито за задумом
+        if index <= hints_used and not hint.solution and not self._locked:
             button.setChecked(True)
         return block, widgets
 
     def _refresh_lock_state(self) -> None:
         if self._task is None:
             return
+        if self._locked:
+            self._lock_everything()
+            return
+
         needed = self._task.minutes * 60
         left = max(0.0, needed - self._active_seconds)
 
         for widgets in self._hint_widgets:
             hint = widgets["hint"]
             if not hint.solution:
+                # підказка-орієнтир: пояснення під нею потрібне лише колись
+                widgets["note"].setVisible(False)
                 continue
             button = widgets["button"]
             note = widgets["note"]
@@ -797,6 +963,34 @@ class TaskPanel(QWidget):
                     f"Відкриється через {_format_time(left)} активної роботи над "
                     f"задачею (з {self._task.minutes} хв). Працювало: "
                     f"{_format_time(self._active_seconds)}."
+                )
+
+    def _lock_everything(self) -> None:
+        """Холодне повторення: жодна підказка не відкривається, розв'язок теж.
+
+        Перевірки при цьому лишаються доступними: людина має здати задачу
+        так, як згадала, і вже вердикт скаже, чи справді пам'ятає.
+        """
+        for widgets in self._hint_widgets:
+            button = widgets["button"]
+            button.setChecked(False)
+            button.setEnabled(False)
+            button.setText(
+                f'Підказка {widgets["index"]} · недоступна в холодному повторенні'
+            )
+            widgets["text"].setVisible(False)
+            widgets["use_button"].setVisible(False)
+
+            note = widgets["note"]
+            note.setVisible(True)
+            if widgets["hint"].solution:
+                note.setText(
+                    "Розв'язок повернеться, щойно завершиш холодне повторення."
+                )
+            else:
+                note.setText(
+                    "Холодне повторення: спершу згадай сам. Підказки "
+                    "повернуться після спроби."
                 )
 
     def _refresh_xp(self, xp_preview: int | None, hints_used: int) -> None:

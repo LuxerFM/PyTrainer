@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS attempts (
     created_at  TEXT NOT NULL,
     ok          INTEGER NOT NULL,
     with_checks INTEGER NOT NULL,
+    clean       INTEGER NOT NULL DEFAULT 0,
     xp          INTEGER NOT NULL DEFAULT 0
 );
 
@@ -164,6 +165,9 @@ class Database:
         self._add_columns("attempts", {
             "failed_check": "TEXT NOT NULL DEFAULT ''",
             "error_kind": "TEXT NOT NULL DEFAULT ''",
+            # Чистий прохід — здано без підказок і без розв'язку. За цим
+            # вирішується, чи помилка справді закрита.
+            "clean": "INTEGER NOT NULL DEFAULT 0",
         })
 
     def close(self) -> None:
@@ -321,16 +325,23 @@ class Database:
         xp: int = 0,
         failed_check: str = "",
         error_kind: str = "",
+        clean: bool = False,
     ) -> None:
+        """Записує одну спробу.
+
+        `clean` — здано без підказок і без вставленого розв'язку. Саме ця
+        ознака закриває помилку в журналі: «зробив» і «зробив сам» — різні речі.
+        """
         self._ensure(task_id)
         self.connection.execute(
             """
             INSERT INTO attempts
-                (task_id, created_at, ok, with_checks, xp, failed_check, error_kind)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (task_id, created_at, ok, with_checks, clean, xp,
+                 failed_check, error_kind)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (task_id, _now(), 1 if ok else 0, 1 if with_checks else 0, xp,
-             failed_check, error_kind),
+            (task_id, _now(), 1 if ok else 0, 1 if with_checks else 0,
+             1 if clean else 0, xp, failed_check, error_kind),
         )
         self.connection.commit()
 
@@ -338,26 +349,47 @@ class Database:
     # журнал помилок
     # ------------------------------------------------------------------
 
-    def mistakes(self, limit: int = 12) -> list[sqlite3.Row]:
-        """Останні помилки: задача + тип помилки + скільки разів наступив.
+    def mistake_history(self, limit: int = 12) -> list[sqlite3.Row]:
+        """Помилки з журналу + коли задача востаннє проходила і проходила чисто.
 
-        Групуємо саме за парою (задача, тип помилки): «двічі NameError у Two
-        Sum» — це одна річ, яку треба добити, а не два різні рядки в списку.
-        Задачі без розпізнаного типу помилки (просто неправильний вивід) не
-        потрапляють сюди: повторення для них і так працює.
+        Одним запитом, а не двома десятками: журнал перемальовується на кожну
+        зміну прогресу, і питання «чи вже закрито» не повинно коштувати N+1
+        звернень до бази. Порівнюємо за `id`, а не за часом: дві спроби в одну
+        секунду мають однаковий час, і порядок тоді вгадувати неможливо.
         """
         return list(
             self.connection.execute(
                 """
-                SELECT task_id,
-                       error_kind,
-                       COUNT(*)        AS times,
-                       MAX(failed_check) AS failed_check,
-                       MAX(created_at) AS last_at
-                  FROM attempts
-                 WHERE with_checks = 1 AND ok = 0 AND error_kind != ''
-                 GROUP BY task_id, error_kind
-                 ORDER BY last_at DESC
+                SELECT m.task_id,
+                       m.error_kind,
+                       m.times,
+                       m.last_at,
+                       m.last_id,
+                       (SELECT a.failed_check FROM attempts AS a
+                         WHERE a.id = m.last_id) AS failed_check,
+                       (SELECT MAX(a.id) FROM attempts AS a
+                         WHERE a.task_id = m.task_id AND a.ok = 1
+                           AND a.with_checks = 1) AS pass_id,
+                       (SELECT MAX(a.created_at) FROM attempts AS a
+                         WHERE a.task_id = m.task_id AND a.ok = 1
+                           AND a.with_checks = 1) AS pass_at,
+                       (SELECT MAX(a.id) FROM attempts AS a
+                         WHERE a.task_id = m.task_id AND a.ok = 1
+                           AND a.with_checks = 1 AND a.clean = 1) AS clean_id,
+                       (SELECT MAX(a.created_at) FROM attempts AS a
+                         WHERE a.task_id = m.task_id AND a.ok = 1
+                           AND a.with_checks = 1 AND a.clean = 1) AS clean_at
+                  FROM (
+                       SELECT task_id,
+                              error_kind,
+                              COUNT(*)          AS times,
+                              MAX(created_at)   AS last_at,
+                              MAX(id)           AS last_id
+                         FROM attempts
+                        WHERE with_checks = 1 AND ok = 0 AND error_kind != ''
+                        GROUP BY task_id, error_kind
+                  ) AS m
+                 ORDER BY m.last_at DESC, m.last_id DESC
                  LIMIT ?
                 """,
                 (limit,),
@@ -381,6 +413,44 @@ class Database:
             if row["day"] and row["day"] >= cutoff
         }
 
+    def attempts_between(self, start: date | str, end: date | str) -> list[sqlite3.Row]:
+        """Спроби за проміжок дат (включно) — з них складається тижневий огляд.
+
+        Дати зберігаються текстом у форматі ISO, тому `substr(created_at, 1, 10)`
+        дає день спроби, а порівняння рядків збігається з порівнянням дат.
+        """
+        first = start.isoformat() if isinstance(start, date) else start
+        last = end.isoformat() if isinstance(end, date) else end
+        return list(
+            self.connection.execute(
+                """
+                SELECT id, task_id, created_at, ok, with_checks, clean, xp,
+                       failed_check, error_kind
+                  FROM attempts
+                 WHERE substr(created_at, 1, 10) BETWEEN ? AND ?
+                 ORDER BY id
+                """,
+                (first, last),
+            )
+        )
+
+    def solved_between(self, start: date | str, end: date | str) -> list[str]:
+        """Id задач, уперше зданих у цьому проміжку."""
+        first = start.isoformat() if isinstance(start, date) else start
+        last = end.isoformat() if isinstance(end, date) else end
+        return [
+            row["task_id"]
+            for row in self.connection.execute(
+                """
+                SELECT task_id FROM progress
+                 WHERE solved_at IS NOT NULL
+                   AND substr(solved_at, 1, 10) BETWEEN ? AND ?
+                 ORDER BY task_id
+                """,
+                (first, last),
+            )
+        ]
+
     def attempts_count(self, task_id: str, *, with_checks: bool = True) -> int:
         row = self.connection.execute(
             """
@@ -402,7 +472,7 @@ class Database:
         return list(
             self.connection.execute(
                 """
-                SELECT created_at, ok, with_checks, xp FROM attempts
+                SELECT created_at, ok, with_checks, clean, xp FROM attempts
                  WHERE task_id = ?
                  ORDER BY id DESC LIMIT ?
                 """,

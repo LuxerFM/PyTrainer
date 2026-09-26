@@ -210,7 +210,12 @@ class DatabaseTests(unittest.TestCase):
 
 
 class MistakeLogTests(unittest.TestCase):
-    """Журнал помилок: що саме людина не здала і скільки разів."""
+    """Журнал помилок: що саме людина не здала, скільки разів — і чи вже закрито.
+
+    Рішення «закрито / закрито з допомогою / відкрито» ухвалює `core/mistakes`,
+    але всі дані для нього віддає цей запит — тому перевіряємо його тут, разом
+    із `id` спроб: за часом дві спроби в одну секунду не розрізнити.
+    """
 
     def setUp(self):
         self.db = Database(":memory:")
@@ -219,22 +224,22 @@ class MistakeLogTests(unittest.TestCase):
         self.db.close()
 
     def test_empty_log(self):
-        self.assertEqual(self.db.mistakes(), [])
+        self.assertEqual(self.db.mistake_history(), [])
 
     def test_successful_attempt_is_not_a_mistake(self):
         self.db.record_attempt("w1-hello", ok=True, with_checks=True, xp=100,
                                error_kind="AssertionError")
-        self.assertEqual(self.db.mistakes(), [])
+        self.assertEqual(self.db.mistake_history(), [])
 
     def test_runs_without_checks_are_not_mistakes(self):
         self.db.record_attempt("w1-hello", ok=False, with_checks=False)
-        self.assertEqual(self.db.mistakes(), [])
+        self.assertEqual(self.db.mistake_history(), [])
 
     def test_wrong_output_without_a_kind_is_not_logged(self):
         """«У виводі немає…» — не помилка Python, у журнал не пишемо."""
         self.db.record_attempt("w1-hello", ok=False, with_checks=True,
                                failed_check="виводить привітання", error_kind="")
-        self.assertEqual(self.db.mistakes(), [])
+        self.assertEqual(self.db.mistake_history(), [])
 
     def test_groups_by_task_and_kind(self):
         for _ in range(3):
@@ -245,7 +250,7 @@ class MistakeLogTests(unittest.TestCase):
                                failed_check="два однакові числа",
                                error_kind="AssertionError")
 
-        rows = self.db.mistakes()
+        rows = self.db.mistake_history()
         self.assertEqual(len(rows), 2)          # дві різні помилки, не чотири
         by_kind = {row["error_kind"]: row for row in rows}
         self.assertEqual(by_kind["NameError"]["times"], 3)
@@ -261,20 +266,20 @@ class MistakeLogTests(unittest.TestCase):
         self.db.connection.commit()
         self.db.record_attempt("w1-vars", ok=False, with_checks=True,
                                error_kind="TypeError")
-        rows = self.db.mistakes()
+        rows = self.db.mistake_history()
         self.assertEqual(rows[0]["task_id"], "w1-vars")
 
     def test_limit_is_respected(self):
         for index in range(5):
             self.db.record_attempt(f"task-{index}", ok=False, with_checks=True,
                                    error_kind="ValueError")
-        self.assertEqual(len(self.db.mistakes(limit=2)), 2)
+        self.assertEqual(len(self.db.mistake_history(limit=2)), 2)
 
     def test_reset_clears_the_log(self):
         self.db.record_attempt("w1-hello", ok=False, with_checks=True,
                                error_kind="NameError")
         self.db.reset_task("w1-hello")
-        self.assertEqual(self.db.mistakes(), [])
+        self.assertEqual(self.db.mistake_history(), [])
 
 
 class XpHistoryTests(unittest.TestCase):
@@ -355,6 +360,9 @@ class MigrationTests(unittest.TestCase):
                                db.connection.execute("PRAGMA table_info(attempts)")}
             self.assertIn("failed_check", attempt_columns)
             self.assertIn("error_kind", attempt_columns)
+            # Стара база не знала про «чистий прохід» — ним закриваються
+            # помилки в журналі, і без міграції огляд рахував би їх вічно.
+            self.assertIn("clean", attempt_columns)
             progress_columns = {row["name"] for row in
                                 db.connection.execute("PRAGMA table_info(progress)")}
             self.assertIn("code", progress_columns)
@@ -368,10 +376,10 @@ class MigrationTests(unittest.TestCase):
         try:
             self.assertEqual(db.status("w1-hello"), "done")
             self.assertEqual(db.total_xp(), 100)
-            self.assertEqual(db.mistakes(), [])
+            self.assertEqual(db.mistake_history(), [])
             db.record_attempt("w1-vars", ok=False, with_checks=True,
                               error_kind="NameError")
-            self.assertEqual(len(db.mistakes()), 1)
+            self.assertEqual(len(db.mistake_history()), 1)
         finally:
             db.close()
 

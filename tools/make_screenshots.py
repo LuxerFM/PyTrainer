@@ -33,11 +33,31 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 from trainer.core.db import Database  # noqa: E402
 from trainer.core.demo import seed_database  # noqa: E402
 from trainer.ui.main_window import MainWindow  # noqa: E402
-from trainer.ui.task_panel import TAB_CHEATSHEET  # noqa: E402
+from trainer.ui.task_panel import TAB_CHEATSHEET, TAB_HINTS, TAB_REVIEW  # noqa: E402
 from trainer.ui.theme import apply_theme  # noqa: E402
 
 TARGET = ROOT / "docs" / "images"
 VIEW_ROADMAP, VIEW_REVIEWS, VIEW_PROGRESS = 0, 1, 2
+
+# Код, який «написав учень»: він працює, але саме на такому розбір коду
+# показує свою користь — і жодне з цих зауважень не про тести.
+SLOPPY_SAMPLE = '''\
+import math
+import random
+
+
+def AvgOfMarks(marks):
+    total = 0
+    for i in range(len(marks)):
+        total = total + marks[i]
+    avg = total / len(marks)
+    if avg == None:
+        return 0
+    if avg >= 4.5:
+        return True
+    else:
+        return False
+'''
 
 
 @dataclass
@@ -52,7 +72,9 @@ class Shot:
     run: bool = False
     tab: int | None = None
     theme: str = "dark"
-    extra: dict = field(default_factory=dict)
+    cold: bool = False          # почати холодне повторення замість відкриття задачі
+    code: str = ""              # текст у редакторі (наприклад код із помилками стилю)
+    digest: bool = False        # зняти вікно тижневого огляду, а не головне вікно
 
 
 SHOTS: tuple[Shot, ...] = (
@@ -96,6 +118,28 @@ SHOTS: tuple[Shot, ...] = (
         solution=True,
         run=True,
         theme="light",
+    ),
+    Shot(
+        "08-cold-review",
+        "Холодне повторення: здана задача із заготовки, підказки й розв'язок "
+        "замкнено, іде зворотний відлік",
+        view=VIEW_REVIEWS,
+        tab=TAB_HINTS,
+        cold=True,
+    ),
+    Shot(
+        "09-code-review",
+        "Рев'ю коду: тренажер читає твій код і каже, що в ньому не так — і як "
+        "виправити",
+        task="w1-marks",
+        tab=TAB_REVIEW,
+        code=SLOPPY_SAMPLE,
+    ),
+    Shot(
+        "10-weekly-digest",
+        "Тижневий огляд: що сталося за сім днів і що робити далі",
+        view=VIEW_PROGRESS,
+        digest=True,
     ),
 )
 
@@ -148,18 +192,29 @@ def main() -> int:
                 window.open_task(shot.task)
                 if shot.solution and window._task is not None:
                     window.editor.setPlainText(window._task.solution_hint.text)
+            if shot.cold:
+                window.start_cold_review()
+            if shot.code:
+                window.editor.setPlainText(shot.code)
+                window.review_current_code()
             settle(app)
 
             if shot.run:
                 run_checks_and_wait(window, app)
             if shot.tab is not None:
                 window.panel.tabs.setCurrentIndex(shot.tab)
+            if shot.digest:
+                window.show_digest()
             settle(app, 5)
 
+            # Вікно огляду — окремий віджет, тому знімаємо саме його.
+            frame = window.digest_dialog if shot.digest else window
             path = TARGET / f"{shot.name}.png"
-            if not window.grab().save(str(path)):
+            if not frame.grab().save(str(path)):
                 print(f"Не вдалося зберегти {path}")
                 return 1
+            if shot.digest:
+                window.digest_dialog.close()
             print(f"{path.name:22} {shot.caption}")
     finally:
         window.close()

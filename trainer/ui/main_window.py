@@ -39,15 +39,26 @@ from curriculum import CURRICULUM, find_task, first_unfinished, study_tasks, top
 from curriculum.roadmap_md import write as write_roadmap
 
 from ..core import scoring
+from ..core.codereview import (
+    STARTER_REVIEW,
+    CodeReview,
+    issues_phrase,
+    names_used_in,
+    review_code,
+)
 from ..core.db import Database
+from ..core.digest import WeeklyDigest, weekly_digest
+from ..core.mistakes import mistake_states
 from ..core.plan import daily_plan
+from ..core.review import cold_seconds, pick_cold_task
 from ..core.runner import RunResult, run_task
 from ..core.session import StudySession, StudyUpdate
 from ..core.stats import overall, weak_topics
 from ..paths import app_folder
+from .digest_page import DigestDialog
 from .editor import CodeEditor
 from .sidebar import SideNav
-from .task_panel import TAB_HINTS, TaskPanel
+from .task_panel import TAB_HINTS, TAB_REVIEW, TaskPanel
 from .theme import (MONO_FONTS, Colors, apply_theme, pick_font, scale, set_scale)
 
 ROOT = app_folder()
@@ -112,8 +123,12 @@ class MainWindow(QMainWindow):
         self._task = None
         self._running = False
         self._review_mode = False
+        self._cold_left = 0.0
+        self._cold_warned = False
         self._last_saved = ""
         self._restored = False
+        self._digest: WeeklyDigest | None = None
+        self.digest_dialog: DigestDialog | None = None
 
         self.sidebar = SideNav()
         self.editor = CodeEditor()
@@ -159,14 +174,20 @@ class MainWindow(QMainWindow):
         run_menu = self.menuBar().addMenu("Запуск")
         self._add_action(run_menu, "Запустити", "Ctrl+Return", self.run_code_only)
         self._add_action(run_menu, "Перевірити тестами", "F5", self.run_checks)
+        self._add_action(run_menu, "Розібрати мій код (рев'ю)", "F6",
+                         self.review_current_code)
         self._add_action(run_menu, "Очистити консоль", None, self.console.clear)
 
         study_menu = self.menuBar().addMenu("Навчання")
         self._add_action(study_menu, "План на сьогодні", "Ctrl+L",
                          lambda: self.sidebar.set_mode(3))
         self._add_action(study_menu, "На повторення", "Ctrl+R", lambda: self.sidebar.set_mode(1))
+        self._add_action(study_menu, "Холодне повторення (випадкова задача)",
+                         "Ctrl+Shift+R", self.start_cold_review)
         self._add_action(study_menu, "Прогрес і слабкі місця", "Ctrl+P",
                          lambda: self.sidebar.set_mode(2))
+        self._add_action(study_menu, "Тижневий огляд", "Ctrl+Shift+W",
+                         self.show_digest)
         self._add_action(study_menu, "Наступна незавершена задача", "Ctrl+N",
                          self.open_next_task)
         self._add_action(study_menu, "Знайти задачу", "Ctrl+F", self.focus_search)
@@ -339,8 +360,11 @@ class MainWindow(QMainWindow):
 
     def _connect(self) -> None:
         self.sidebar.task_selected.connect(self.open_task)
+        self.sidebar.cold_review_requested.connect(self.start_cold_review)
         self.sidebar.stats.topic_practice_requested.connect(self.practice_topic)
+        self.sidebar.digest_requested.connect(self.show_digest)
         self.panel.hint_revealed.connect(self._on_hint_revealed)
+        self.panel.review_requested.connect(self.review_current_code)
         self.panel.solution_use_requested.connect(self._use_solution)
         self.panel.manual_toggle_requested.connect(self.toggle_manual_done)
         self.panel.jump_to_line_requested.connect(self.jump_to_line)
@@ -360,6 +384,7 @@ class MainWindow(QMainWindow):
         if task is None or task.stub:
             self._task = None
             self._review_mode = False
+            self._cold_left = 0.0
             self.editor.setPlainText("")
             self.editor.setReadOnly(True)
             self._set_run_enabled(False)
@@ -381,6 +406,9 @@ class MainWindow(QMainWindow):
 
         self._task = task
         self._review_mode = review
+        self._cold_left = cold_seconds(task) if review else 0.0
+        self._cold_warned = False
+        self.btn_hint.setEnabled(not review)
         self.editor.setReadOnly(False)
         self._set_run_enabled(True)
 
@@ -395,14 +423,25 @@ class MainWindow(QMainWindow):
             active_seconds=active,
             xp_preview=self.session.preview_xp(task),
             position=self._task_position(task.id),
+            locked=review,
         )
         self._load_history(task.id)
 
         saved = self.db.saved_code(task.id)
-        text = saved if saved else task.starter
+        # Холодне повторення починається із заготовки: показати свій же
+        # розв'язок — це впізнавання, а не згадка. Збережений код у базі при
+        # цьому не чіпається (див. _start_run і _tick).
+        text = task.starter if review else (saved if saved else task.starter)
         self.editor.setPlainText(text)
         self._last_saved = text
         self.console.clear()
+        if review:
+            self._log(
+                f"❄ Холодне повторення: {task.title}. Підказки й розв'язок "
+                f"недоступні, час — до {cold_seconds(task) // 60} хв. "
+                "Згадай сам — і тисни F5.",
+                Colors.warn,
+            )
         self._show_stdin_hint(task)
         self.file_label.setText(f"{task.id}.py")
         self.status_msg.setText(
@@ -418,6 +457,65 @@ class MainWindow(QMainWindow):
                 self.sidebar.select(task.id)
                 return
         self.status_msg.setText("Усі задачі, які вже написані, здані 🎉")
+
+    # ==================================================================
+    # холодне повторення
+    # ==================================================================
+
+    def start_cold_review(self) -> None:
+        """Випадкова здана задача без підказок і розв'язку, з таймером.
+
+        Навіщо окремий режим: відкрити свою ж здану задачу легко, а згадати її
+        з нуля — ні. Тому редактор починається із заготовки, підказки й
+        розв'язок вимкнено, а вердикт іде в ту саму чергу повторень.
+        """
+        choice = pick_cold_task(self.db, exclude=self._current_id())
+        if choice is None:
+            self.status_msg.setText(
+                "Холодне повторення — для вже зданих задач. Здай якусь "
+                "задачу (крім відкритої зараз) — і воно стане доступним."
+            )
+            return
+
+        task = choice.task
+        self.open_task(task.id, review=True)
+        # Позначку в дереві показуємо, але сторінку не перемикаємо: якщо
+        # холодне повторення почалось зі списку повторень, туди ж і хочеться
+        # повернутись.
+        self.sidebar.tree.select(task.id)
+        source = "з черги повторень" if choice.from_queue \
+            else "випадкова зі зданих"
+        self.status_msg.setText(
+            f"❄ Холодне повторення · {source} · до {choice.minutes} хв"
+        )
+
+    def _advance_cold(self, seconds: float) -> None:
+        """Рахує, скільки лишилось на холодне згадування."""
+        if not self._review_mode:
+            return
+        self._cold_left = max(0.0, self._cold_left - seconds)
+        if self._cold_left <= 0 and not self._cold_warned:
+            self._cold_warned = True
+            self._log(
+                "Час вийшов. Допиши думку й тисни F5: краще здати як є, ніж "
+                "просидіти над задачею до ночі.",
+                Colors.warn,
+            )
+        self._update_timer_label()
+
+    def _end_cold_review(self) -> None:
+        """Холодне повторення — одна спроба: далі підказки знову доступні."""
+        self._review_mode = False
+        self._cold_left = 0.0
+        self._cold_warned = False
+        self.btn_hint.setEnabled(True)
+        self.panel.set_locked(False)
+        self._log(
+            "Холодне повторення завершено — підказки знову доступні, якщо "
+            "захочеш пройти задачу спокійно.",
+            Colors.muted,
+        )
+        self._update_timer_label()
 
     def focus_search(self) -> None:
         self.sidebar.set_mode(0)
@@ -496,7 +594,7 @@ class MainWindow(QMainWindow):
         self.status_msg.setText(f"Збережено: {Path(path).name}")
 
     def _save_current_code(self) -> None:
-        if self._task is not None:
+        if self._task is not None and not self._review_mode:
             text = self.editor.toPlainText()
             self.db.save_code(self._task.id, text)
             self._last_saved = text
@@ -586,7 +684,10 @@ class MainWindow(QMainWindow):
 
         task = self._task
         code = self.editor.toPlainText()
-        self.db.save_code(task.id, code)
+        if not self._review_mode:
+            # У холодному повторенні в редакторі лежить заготовка, і записати
+            # її в базу означало б стерти справжній розв'язок.
+            self.db.save_code(task.id, code)
         self._last_saved = code
         checks = list(task.checks) if with_checks else []
 
@@ -630,6 +731,10 @@ class MainWindow(QMainWindow):
 
         if self._task is None:
             return
+
+        # Розбір коду показуємо після кожного запуску: вердикт сказав, що код
+        # не працює, а розбір — що він робить із очима читача.
+        self._refresh_review(announce=result.ran_checks and result.all_passed)
         task = self._task
 
         if not result.ran_checks:
@@ -638,11 +743,14 @@ class MainWindow(QMainWindow):
             self._refresh_stats()
             return
 
-        update = self.session.record_result(task, result, review_mode=self._review_mode)
+        cold = self._review_mode
+        update = self.session.record_result(task, result, review_mode=cold)
 
         if update is None:
             return
-        self._render_update(update, task, result)
+        self._render_update(update, task, result, cold=cold)
+        if cold:
+            self._end_cold_review()
 
         self._refresh_all()
         self._load_history(task.id)
@@ -650,7 +758,55 @@ class MainWindow(QMainWindow):
         self.rewrite_roadmap(silent=True)
         self._write_progress(silent=True)
 
-    def _render_update(self, update: StudyUpdate, task, result: RunResult) -> None:
+    def review_current_code(self) -> None:
+        """Розбирає код із редактора й показує вкладку «Рев'ю». F6.
+
+        Це не оцінка й не перевірка: тести кажуть, чи код працює, а розбір —
+        чи його зрозуміє інша людина. Тому він нічого не блокує й не зменшує XP.
+        """
+        if self._task is None:
+            self.status_msg.setText("Спершу вибери задачу з плану зліва")
+            return
+
+        review = self._refresh_review()
+        self.panel.tabs.setCurrentIndex(TAB_REVIEW)
+        self.status_msg.setText(review.summary)
+        self._log(f"Рев'ю коду: {review.summary}", Colors.muted)
+
+    def _check_names(self) -> set[str]:
+        """Імена, які потрібні прихованим перевіркам задачі.
+
+        Перевірки виконуються в тому ж файлі, тому можуть читати змінні
+        людини. Якщо розбір про це не знає, він радить видалити те, без чого
+        задача перестане здаватись — це найгірше, що може зробити порадник.
+        """
+        if self._task is None:
+            return set()
+        return names_used_in(
+            check.code for check in self._task.checks if check.code
+        )
+
+    def _refresh_review(self, *, announce: bool = False) -> CodeReview:
+        """Оновлює розбір коду, не перемикаючи вкладку (тихо, після запуску).
+
+        Заготовку задачі не розбираємо: доки людина нічого не написала, будь-яке
+        зауваження було б докором за чужий код.
+        """
+        code = self.editor.toPlainText()
+        if self._task is not None and code.strip() == self._task.starter.strip():
+            review = CodeReview(summary=STARTER_REVIEW)
+        else:
+            review = review_code(code, keep=self._check_names())
+        self.panel.show_review(review)
+        if announce and review.issues:
+            self._log(
+                f"» Рев'ю коду: {issues_phrase(len(review.issues))} — вкладка «Рев'ю»",
+                Colors.muted,
+            )
+        return review
+
+    def _render_update(self, update: StudyUpdate, task, result: RunResult,
+                       *, cold: bool = False) -> None:
         """Малює те, що вирішило ядро: XP, статус, чергу повторень."""
         if update.passed:
             self.sidebar.mark(task.id, "done")
@@ -660,6 +816,9 @@ class MainWindow(QMainWindow):
             self._log("Усі перевірки пройдено · " + " · ".join(parts), Colors.success)
             for note in update.notes:
                 self._log(f"» {note}", Colors.muted if "повторення" in note else Colors.warn)
+            if cold:
+                self._log("❄ Холодне повторення: згадав без підказок ✓",
+                          Colors.success)
             if update.mastered:
                 self._log("Задача утримана — більше не в черзі повторень 🎯",
                           Colors.success)
@@ -670,6 +829,12 @@ class MainWindow(QMainWindow):
                       Colors.warn)
             for note in update.notes:
                 self._log(f"» {note}", Colors.muted)
+            if cold:
+                self._log(
+                    "❄ Холодне повторення: не згадав — задача повернеться в "
+                    "чергу. Це нормально: саме такі прогалини й ловляться.",
+                    Colors.warn,
+                )
             self.status_msg.setText("Є помилки — дивись вкладку «Тести»")
 
     # ==================================================================
@@ -714,6 +879,12 @@ class MainWindow(QMainWindow):
         if not self.isActiveWindow():
             return  # у фоні час не йде
 
+        if self._review_mode:
+            # Холодне повторення: свій відлік і жодного запису в прогрес.
+            # Збережений розв'язок і набраний час за задачею лишаються як були.
+            self._advance_cold(TICK_SECONDS)
+            return
+
         code = self.editor.toPlainText()
         if code != self._last_saved:      # автозбереження: крах не з'їсть роботу
             self.db.save_code(self._task.id, code)
@@ -729,6 +900,14 @@ class MainWindow(QMainWindow):
     def _update_timer_label(self) -> None:
         if self._task is None:
             self.timer_label.setText("")
+            return
+        if self._review_mode:
+            left = max(0, int(self._cold_left))
+            self.timer_label.setText(
+                f"❄ Холодне повторення · лишилось {left // 60}:{left % 60:02d}"
+                if left else
+                "❄ Холодне повторення · час вийшов — здай як є (F5)"
+            )
             return
         active = self.db.active_seconds(self._task.id)
         if self.db.status(self._task.id) == "done":
@@ -862,30 +1041,67 @@ class MainWindow(QMainWindow):
         self._refresh_mistakes()
         self._refresh_plan()
         self._refresh_stats()
+        self._refresh_digest()
 
     def _refresh_mistakes(self) -> None:
         """Журнал помилок: що саме не пройшло й скільки разів.
 
-        Показуємо лише помилки задач, які ще не здані: якщо задачу вже
-        розв'язано, ця помилка не «висить» — список має лишатися списком
-        того, що варто виправити, а не історією страждань.
+        Помилка лишається у списку, доки задачу не здано **чисто** — без
+        підказок і розв'язку. Хто здав із опорою, бачить жовте «закрито з
+        допомогою»: список не вдає, ніби все гаразд, і не перетворюється на
+        історію страждань — обидві крайнощі однаково шкідливі.
         """
         rows = []
-        for row in self.db.mistakes():
-            task = find_task(row["task_id"])
-            if task is None or self.db.status(task.id) == "done":
+        for state in mistake_states(self.db):
+            task = find_task(state.task_id)
+            if task is None or state.is_closed:
                 continue
             rows.append({
                 "task_id": task.id,
                 "title": task.title,
-                "kind": row["error_kind"],
-                "times": row["times"],
-                "when": _human_when(row["last_at"][:10]),
-                "tooltip": f'{row["failed_check"] or "перевірка"}\n'
-                           f'{task.level} · {task.base_xp} XP'
-                           "\n\nНатисни, щоб повернутися до задачі",
+                "kind": state.kind,
+                "times": state.times,
+                "when": _human_when(state.last_at[:10]),
+                "status": state.status,
+                "status_label": state.label,
+                "tooltip": f'{state.check or "перевірка"}\n'
+                           f'{task.level} · {task.base_xp} XP\n\n'
+                           + ("Закрито з допомогою — згадай задачу холодним "
+                              "повторенням" if state.status == "helped"
+                              else "Натисни, щоб повернутися до задачі"),
             })
+        rows.sort(key=lambda row: row["status"] != "open")   # спершу відкриті
         self.sidebar.set_mistakes(rows)
+
+    def _refresh_digest(self) -> None:
+        """Тижневий огляд — одні розрахунки на сторінку, меню й вікно.
+
+        Рахуємо на кожне оновлення прогресу: це кілька запитів до бази, і
+        завдяки цьому відкрите вікно огляду ніколи не показує старих цифр.
+        """
+        self._digest = weekly_digest(self.db)
+        self.sidebar.set_digest_summary(self._digest)
+        if self.digest_dialog is not None:
+            self.digest_dialog.set_digest(self._digest)
+
+    def show_digest(self) -> None:
+        """Відкриває тижневий огляд (меню, Ctrl+Shift+W або сторінка «Прогрес»)."""
+        self._refresh_digest()
+        if self.digest_dialog is None:
+            dialog = DigestDialog(self._digest, self)
+            dialog.task_selected.connect(self._open_from_digest)
+            dialog.finished.connect(self._forget_digest)
+            self.digest_dialog = dialog
+        self.digest_dialog.show()
+        self.digest_dialog.raise_()
+        self.digest_dialog.activateWindow()
+
+    def _forget_digest(self, _result: int) -> None:
+        self.digest_dialog = None
+
+    def _open_from_digest(self, task_id: str) -> None:
+        self.open_task(task_id)
+        self.sidebar.select(task_id)
 
     def _refresh_plan(self) -> None:
         self.sidebar.set_plan(daily_plan(self.db))
@@ -1000,10 +1216,13 @@ class MainWindow(QMainWindow):
             self, "Гарячі клавіші",
             "Ctrl+Enter — запустити код\n"
             "F5 — перевірити прихованими тестами\n"
+            "F6 — розібрати свій код (рев'ю)\n"
             "Ctrl+N — наступна незавершена задача\n"
             "Ctrl+L — план на сьогодні\n"
             "Ctrl+R — черга повторень\n"
+            "Ctrl+Shift+R — холодне повторення випадкової задачі\n"
             "Ctrl+P — прогрес і слабкі місця\n"
+            "Ctrl+Shift+W — тижневий огляд\n"
             "Ctrl+F — пошук задачі\n"
             "Ctrl+D — темна / світла тема\n"
             "Ctrl++ / Ctrl+- / Ctrl+0 — розмір шрифту\n"
@@ -1103,8 +1322,26 @@ class MainWindow(QMainWindow):
         apply_theme(QApplication.instance(), Colors.name)
         self.editor.apply_theme()
         self._refresh_all()
-        if self._task is not None:
-            self.open_task(self._task.id)
+        self._reopen_current()
+
+    def _reopen_current(self) -> None:
+        """Перемальовує поточну задачу після зміни теми чи масштабу тексту.
+
+        У холодному повторенні код у базу не пишеться (задум режиму), тому
+        написане треба перенести руками: інакше Ctrl+D посеред спроби стер би
+        все, що людина встигла набрати, і ще й обнулив би таймер.
+        """
+        if self._task is None:
+            return
+
+        draft = self.editor.toPlainText()
+        left = self._cold_left
+        review = self._review_mode
+        self.open_task(self._task.id, review=review)
+        if review:
+            self._cold_left = left
+            self.editor.setPlainText(draft)
+            self._update_timer_label()
 
     def toggle_theme(self) -> None:
         """Ctrl+D — темна ⇄ світла."""

@@ -3,6 +3,7 @@
 import unittest
 
 from curriculum import find_task
+from trainer.core import scoring
 from trainer.core.db import Database
 from trainer.core.runner import CheckResult, RunResult, run_task
 from trainer.core.session import StudySession
@@ -111,6 +112,28 @@ class SessionTests(unittest.TestCase):
         self.session.record_result(task, failed(), review_mode=True)
         self.assertEqual(self.db.review(task.id)["interval_index"], 0)
         self.assertGreater(index_before, 0)
+
+    def test_cold_recall_of_mastered_task_keeps_it_mastered(self):
+        """Успішна холодна згадка не повертає утриману задачу в розклад.
+
+        Інакше кожне тренування ламало б «утримано» — і черга росла б вічно.
+        """
+        task = find_task("w1-hello")
+        self.session.record_result(task, passed())        # здано чисто → утримано
+        self.assertTrue(self.session.is_mastered(task.id))
+
+        update = self.session.record_result(task, passed(), review_mode=True)
+
+        self.assertTrue(update.passed)
+        self.assertIsNone(update.review_days)
+        self.assertIsNone(self.db.review(task.id), "черга не має з'являтись знову")
+        self.assertTrue(self.session.is_mastered(task.id))
+        # За найдовший витриманий інтервал — найщедріший бонус.
+        self.assertEqual(
+            update.bonus_xp,
+            scoring.review_xp(task, interval_index=len(scoring.INTERVALS) - 1),
+        )
+        self.assertGreater(update.bonus_xp, 0)
 
     # ---------- підказки й ручні пункти ----------
 
