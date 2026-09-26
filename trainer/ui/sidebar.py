@@ -1,7 +1,7 @@
-"""Ліва панель: дерево шляху, черга повторень і статистика.
+"""Left panel: path tree, review queue and stats.
 
-Три режими в одній колонці — щоб не плодити вікна. Перемикач зверху
-перемикає QStackedWidget зі сторінками.
+Three modes in one column — to avoid spawning windows. The switch on top
+flips a QStackedWidget of pages.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ COLOUR = {
 
 
 class RoadmapTree(QTreeWidget):
-    """Дерево «місяць → тема → задача» з позначками стану."""
+    """A "month → topic → task" tree with state marks."""
 
     task_selected = Signal(str)
 
@@ -81,7 +81,7 @@ class RoadmapTree(QTreeWidget):
                         0,
                         f"{task.title}\n{task.level} · {task.base_xp} XP"
                         if not task.stub
-                        else f"{task.title}\nзаплановано",
+                        else f"{task.title}\n{self.tr('заплановано')}",
                     )
                     topic_item.addChild(item)
                     self._items[task.id] = item
@@ -89,7 +89,7 @@ class RoadmapTree(QTreeWidget):
         self.expandToDepth(1)
 
     def _state_of(self, task_id: str, statuses: dict[str, str]) -> str:
-        """Пункт плану може бути позначкою-заглушкою або реальною задачею."""
+        """A plan item may be a stub mark or a real task."""
         status = statuses.get(task_id, "todo")
         if task_id in self._stubs:
             return "done" if status == "done" else "stub"
@@ -106,10 +106,10 @@ class RoadmapTree(QTreeWidget):
             self._paint(item, status)
 
     def apply_statuses(self, statuses: dict[str, str]) -> None:
-        """Оновлює лише позначки — без перебудови дерева.
+        """Updates only the marks — without rebuilding the tree.
 
-        Перебудова скидала б розкриті теми, позицію скролу й поточний пошук,
-        а це саме те, що дратує під час роботи над задачею.
+        Rebuilding would drop expanded topics, scroll position and the
+        current search — exactly what annoys mid-task.
         """
         for task_id, item in self._items.items():
             self._paint(item, self._state_of(task_id, statuses))
@@ -120,10 +120,10 @@ class RoadmapTree(QTreeWidget):
             self.setCurrentItem(item)
             self.scrollToItem(item)
 
-    # ---------- пошук ----------
+    # ---------- search ----------
 
     def filter(self, query: str) -> int:
-        """Ховає все, що не підходить під пошук. Повертає кількість задач."""
+        """Hides everything not matching the search. Returns the task count."""
         query = query.strip().lower()
         found = 0
 
@@ -149,7 +149,7 @@ class RoadmapTree(QTreeWidget):
             month_item.setHidden(not month_visible)
             month_item.setExpanded(month_visible)
 
-        if not query:                      # повертаємо звичайний вигляд
+        if not query:                      # back to the plain view
             self.collapseAll()
             self.expandToDepth(1)
 
@@ -162,7 +162,7 @@ class RoadmapTree(QTreeWidget):
 
 
 class SideNav(QWidget):
-    """Колонка зліва: шапка з прогресом, перемикач режимів і сторінки."""
+    """Left column: progress header, mode switch and pages."""
 
     task_selected = Signal(str)
     cold_review_requested = Signal()
@@ -198,7 +198,7 @@ class SideNav(QWidget):
         self.reviews.cold_review_requested.connect(self.cold_review_requested.emit)
         self.stats.digest_requested.connect(self.digest_requested.emit)
 
-    # ---------- шапка ----------
+    # ---------- header ----------
 
     def _build_header(self) -> QWidget:
         header = QWidget()
@@ -216,7 +216,7 @@ class SideNav(QWidget):
         brand.addStretch(1)
         box.addLayout(brand)
 
-        caption = QLabel("Шлях: від нуля до перших грошей")
+        caption = QLabel(self.tr("Шлях: від нуля до перших грошей"))
         caption.setObjectName("Subtle")
         box.addWidget(caption)
         box.addSpacing(6)
@@ -229,7 +229,7 @@ class SideNav(QWidget):
 
         row = QHBoxLayout()
         row.setSpacing(8)
-        self.progress_label = QLabel("0 із 0 пройдено")
+        self.progress_label = QLabel(self.tr("0 із 0 пройдено"))
         self.progress_label.setObjectName("Subtle")
         self.percent_label = QLabel("0%")
         self.percent_label.setObjectName("Subtle")
@@ -246,7 +246,7 @@ class SideNav(QWidget):
         box.setSpacing(6)
 
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Пошук задачі…")
+        self.search.setPlaceholderText(self.tr("Пошук задачі…"))
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self._on_search)
         box.addWidget(self.search)
@@ -264,7 +264,7 @@ class SideNav(QWidget):
         if not text.strip():
             self.search_note.setVisible(False)
             return
-        self.search_note.setText(f"Знайдено задач: {found}")
+        self.search_note.setText(self.tr("Знайдено задач: {n}").format(n=found))
         self.search_note.setVisible(True)
 
     def _build_switch(self) -> QWidget:
@@ -274,14 +274,14 @@ class SideNav(QWidget):
         row.setContentsMargins(10, 6, 10, 8)
         row.setSpacing(4)
 
-        # Підписи короткі навмисно: чотири кнопки у вузькому сайдбарі — і
-        # довгі слова Qt обрізає многоточієм («Повторення» → «Повто...»).
-        # Повну назву видно в підказці при наведенні.
+        # Labels short on purpose: four buttons in a narrow sidebar — and
+        # long words Qt clips with an ellipsis ("Повторення" → "Повто...").
+        # The full name shows in the hover tooltip.
         modes = (
-            ("Шлях", "План від нуля до перших грошей"),
-            ("Повтор", "Черга повторень: що час згадати"),
-            ("Прогрес", "Скільки здано, XP, серія днів, слабкі місця"),
-            ("План", "Що робити сьогодні — готовий план на вечір"),
+            (self.tr("Шлях"), self.tr("План від нуля до перших грошей")),
+            (self.tr("Повтор"), self.tr("Черга повторень: що час згадати")),
+            (self.tr("Прогрес"), self.tr("Скільки здано, XP, серія днів, слабкі місця")),
+            (self.tr("План"), self.tr("Що робити сьогодні — готовий план на вечір")),
         )
         self.nav_buttons: list[QToolButton] = []
         for index, (title, tip) in enumerate(modes):
@@ -305,7 +305,7 @@ class SideNav(QWidget):
             button.setChecked(position == index)
 
     def load_curriculum(self, months, statuses: dict[str, str]) -> None:
-        """Перше завантаження малює дерево, подальші — лише оновлюють позначки."""
+        """First load draws the tree, later ones only refresh the marks."""
         plan_key = tuple(
             task.id for month in months for topic in month.topics for task in topic.tasks
         )
@@ -317,7 +317,7 @@ class SideNav(QWidget):
         self._apply_search()
 
     def _apply_search(self) -> None:
-        """Після оновлення дерева пошук має лишитись застосованим."""
+        """After a tree refresh the search must stay applied."""
         query = self.search.text()
         if query.strip():
             self._on_search(query)
@@ -332,15 +332,19 @@ class SideNav(QWidget):
     def set_progress(self, done: int, total: int) -> None:
         percent = round(done * 100 / total) if total else 0
         self.progress.setValue(percent)
-        self.progress_label.setText(f"{done} із {total} пройдено")
+        self.progress_label.setText(self.tr("{done} із {total} пройдено").format(
+            done=done, total=total))
         self.percent_label.setText(f"{percent}%")
 
     def set_reviews(self, due_rows: list[dict], later_rows: list[dict]) -> None:
         self.reviews.set_rows(due_rows, later_rows)
         total = len(due_rows)
-        self.nav_buttons[1].setText(f"Повторення{' · ' + str(total) if total else ''}")
+        self.nav_buttons[1].setText(
+            self.tr("Повторення · {n}").format(n=total) if total
+            else self.tr("Повторення"))
         self.nav_buttons[1].setToolTip(
-            f"Час повторити: {total}" if total else "Черга повторень порожня"
+            self.tr("Час повторити: {n}").format(n=total) if total
+            else self.tr("Черга повторень порожня")
         )
 
     def set_stats(self, overall: dict, weak: list, activity: dict[str, int],
@@ -355,13 +359,14 @@ class SideNav(QWidget):
     def set_plan(self, plan) -> None:
         self.plan.set_plan(plan)
         self.nav_buttons[3].setToolTip(
-            f"План на сьогодні: {len(plan.steps)} кроків, ≈{plan.minutes} хв"
-            if not plan.empty else "План на сьогодні порожній"
+            self.tr("План на сьогодні: {n} кроків, ≈{time} хв").format(
+                n=len(plan.steps), time=plan.minutes)
+            if not plan.empty else self.tr("План на сьогодні порожній")
         )
 
     def set_mistakes(self, rows: list[dict]) -> None:
         self.reviews.set_mistakes(rows)
         self.nav_buttons[1].setToolTip(
-            f"Повторень: {self.reviews.today_list.count()} · "
-            f"помилок у журналі: {len(rows)}"
+            self.tr("Повторень: {reviews} · помилок у журналі: {mistakes}").format(
+                reviews=self.reviews.today_list.count(), mistakes=len(rows))
         )

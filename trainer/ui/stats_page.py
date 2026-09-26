@@ -1,7 +1,7 @@
-"""Сторінка «Прогрес»: картки, слабкі теми й календар активності.
+"""The "Прогрес" ("Progress") page: cards, weak topics and activity calendar.
 
-Окремо показуємо не лише «здано», а й «утримано» — задачу, яку більше
-не треба повторювати. Саме друга цифра чесно описує рівень знань.
+We show not just "passed" but "retained" separately — a task needing no more
+reviews. The second number honestly describes the knowledge level.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ WEEKS = 8
 
 
 def _plural(count: int, one: str, few: str, many: str) -> str:
-    """«1 перевірка», «2 перевірки», «5 перевірок» — інакше рядок читається як машинний."""
+    """"1 перевірка", "2 перевірки", "5 перевірок" — else the line reads machine-made."""
     if count % 10 == 1 and count % 100 != 11:
         return one
     if count % 10 in (2, 3, 4) and count % 100 not in (12, 13, 14):
@@ -37,7 +37,7 @@ def _plural(count: int, one: str, few: str, many: str) -> str:
 
 
 class ActivityGrid(QWidget):
-    """Календар активності: 8 тижнів × 7 днів, як у GitHub."""
+    """Activity calendar: 8 weeks × 7 days, GitHub-style."""
 
     CELL = 11
     GAP = 3
@@ -87,11 +87,11 @@ class ActivityGrid(QWidget):
 
 
 class XpChart(QWidget):
-    """Стовпчики XP по днях: видно не лише «скільки всього», а й темп.
+    """XP bars by day: not just "how much total" but the pace.
 
-    Календар активності показує, що ти займався. Цей графік — наскільки
-    продуктивно: два дні по 10 запусків на легких задачах і два дні над
-    одною складною виглядають зовсім по-різному.
+    The activity calendar shows that you studied. This chart — how
+    productively: two days of 10 runs on easy tasks vs two days on one hard
+    task look nothing alike.
     """
 
     DAYS = 28
@@ -130,7 +130,7 @@ class XpChart(QWidget):
             height = 0.0 if not peak else max(2.0, (value / peak) * (self.height() - 6))
             colour = Colors.accent if value else Colors.elevated
             if value and peak and value < peak * 0.4:
-                colour = "#3f74c9"      # середній темп — окремий відтінок
+                colour = "#3f74c9"      # medium pace — its own shade
             painter.setBrush(QColor(colour))
             painter.drawRoundedRect(
                 QRectF(index * (bar + gap), baseline - height, bar, height), 2, 2
@@ -138,12 +138,12 @@ class XpChart(QWidget):
 
         if peak:
             painter.setPen(QPen(QColor(Colors.muted)))
-            painter.drawText(0, 10, f"найкращий день: {peak} XP")
+            painter.drawText(0, 10, self.tr("найкращий день: {n} XP").format(n=peak))
         painter.end()
 
 
 class StatsPage(QWidget):
-    """Картки + слабкі теми + календар + вхід у тижневий огляд."""
+    """Cards + weak topics + calendar + weekly-digest entry."""
 
     topic_practice_requested = Signal(str)
     digest_requested = Signal()
@@ -158,12 +158,12 @@ class StatsPage(QWidget):
         grid.setSpacing(8)
         self.cards: dict[str, QLabel] = {}
         definitions = (
-            ("done", "здано задач"),
-            ("mastered", "утримано"),
+            ("done", self.tr("здано задач")),
+            ("mastered", self.tr("утримано")),
             ("xp", "XP"),
-            ("streak", "серія днів"),
-            ("rate", "успішність спроб"),
-            ("time", "час у тренажері"),
+            ("streak", self.tr("серія днів")),
+            ("rate", self.tr("успішність спроб")),
+            ("time", self.tr("час у тренажері")),
         )
         for index, (key, caption) in enumerate(definitions):
             value_label, card = self._card("—", caption)
@@ -171,12 +171,12 @@ class StatsPage(QWidget):
             grid.addWidget(card, index // 2, index % 2)
         box.addLayout(grid)
 
-        self.digest_button = QPushButton("Тижневий огляд · 7 днів")
+        self.digest_button = QPushButton(self.tr("Тижневий огляд · 7 днів"))
         self.digest_button.setObjectName("Ghost")
         self.digest_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.digest_button.setToolTip(
-            "Що сталося за тиждень: скільки здано, на чому спіткнувся, "
-            "що робити далі. Звіт можна зберегти файлом."
+            self.tr("Що сталося за тиждень: скільки здано, на чому спіткнувся, "
+                    "що робити далі. Звіт можна зберегти файлом.")
         )
         self.digest_button.clicked.connect(
             lambda _=False: self.digest_requested.emit()
@@ -188,7 +188,7 @@ class StatsPage(QWidget):
         self.digest_line.setWordWrap(True)
         box.addWidget(self.digest_line)
 
-        weak_title = QLabel("СЛАБКІ МІСЦЯ")
+        weak_title = QLabel(self.tr("СЛАБКІ МІСЦЯ"))
         weak_title.setObjectName("SectionTitle")
         box.addWidget(weak_title)
 
@@ -198,35 +198,35 @@ class StatsPage(QWidget):
         box.addWidget(self.weak_list, 1)
 
         self.weak_note = QLabel(
-            "Натисни на тему — тренажер відкриє задачу, на якій її можна "
-            "підтягнути."
+            self.tr("Натисни на тему — тренажер відкриє задачу, на якій її можна "
+                    "підтягнути.")
         )
         self.weak_note.setObjectName("Subtle")
         self.weak_note.setWordWrap(True)
         box.addWidget(self.weak_note)
 
         self.weak_empty = QLabel(
-            "Поки що все рівно. Слабкі теми з'являться, коли буде кілька провалів — "
-            "і саме їх тренажер підсвітить."
+            self.tr("Поки що все рівно. Слабкі теми з'являться, коли буде кілька провалів — "
+                    "і саме їх тренажер підсвітить.")
         )
         self.weak_empty.setObjectName("Subtle")
         self.weak_empty.setWordWrap(True)
         box.addWidget(self.weak_empty)
 
-        xp_title = QLabel("XP ЗА 4 ТИЖНІ")
+        xp_title = QLabel(self.tr("XP ЗА 4 ТИЖНІ"))
         xp_title.setObjectName("SectionTitle")
         box.addWidget(xp_title)
 
         self.xp_chart = XpChart()
         box.addWidget(self.xp_chart)
 
-        activity_title = QLabel("АКТИВНІСТЬ · 8 ТИЖНІВ")
+        activity_title = QLabel(self.tr("АКТИВНІСТЬ · 8 ТИЖНІВ"))
         activity_title.setObjectName("SectionTitle")
         box.addWidget(activity_title)
 
         self.activity = ActivityGrid()
         box.addWidget(self.activity)
-        legend = QLabel("кожна клітинка — день, насиченіший колір = більше запусків")
+        legend = QLabel(self.tr("кожна клітинка — день, насиченіший колір = більше запусків"))
         legend.setObjectName("Subtle")
         legend.setWordWrap(True)
         box.addWidget(legend)
@@ -257,18 +257,22 @@ class StatsPage(QWidget):
         self.cards["streak"].setText(str(streak))
         rate = overall.get("success_rate", 0.0)
         self.cards["rate"].setText(f"{round(rate * 100)}%")
-        self.cards["time"].setText(f"{int(active_seconds) // 3600} год")
+        self.cards["time"].setText(self.tr("{n} год").format(
+            n=int(active_seconds) // 3600))
 
         self.weak_list.clear()
         for stat in weak:
             item = QListWidgetItem(
                 f"{stat.name}\n"
-                f"успішних спроб {round(stat.success_rate * 100)}% "
-                f"({stat.passes} із {stat.attempts}) · здано {stat.done}/{stat.total}"
+                + self.tr("успішних спроб {rate}% ({passes} із {attempts}) · "
+                          "здано {done}/{total}").format(
+                              rate=round(stat.success_rate * 100),
+                              passes=stat.passes, attempts=stat.attempts,
+                              done=stat.done, total=stat.total)
             )
             item.setData(Qt.ItemDataRole.UserRole, stat.name)
             item.setForeground(QColor(Colors.warn))
-            item.setToolTip("Натисни, щоб тренувати цю тему")
+            item.setToolTip(self.tr("Натисни, щоб тренувати цю тему"))
             self.weak_list.addItem(item)
         self.weak_list.setVisible(bool(weak))
         self.weak_note.setVisible(bool(weak))
@@ -278,21 +282,25 @@ class StatsPage(QWidget):
         self.xp_chart.set_data(xp_by_day or {})
 
     def set_digest_summary(self, digest: WeeklyDigest) -> None:
-        """Один рядок про тиждень — щоб огляд не губився за кнопкою.
+        """One line about the week — so the digest is not lost behind the button.
 
-        Повний звіт відкривається кнопкою, але найважливіше видно вже тут:
-        скільки перевірок було і скільки помилок ще не закрито.
+        The full report opens on button, but the essentials show right here:
+        how many checks ran and how many mistakes are still open.
         """
         if not digest.active:
-            self.digest_line.setText("Цього тижня занять ще не було.")
+            self.digest_line.setText(self.tr("Цього тижня занять ще не було."))
             return
         open_count = len(digest.open_mistakes)
         self.digest_line.setText(
-            f"Тиждень: {digest.checks} "
-            f"{_plural(digest.checks, 'перевірка', 'перевірки', 'перевірок')} "
-            f"({digest.passes} успішних) · здано {len(digest.solved)} · "
-            f"відкрито {open_count} "
-            f"{_plural(open_count, 'помилка', 'помилки', 'помилок')}"
+            self.tr("Тиждень: {checks} {checks_form} ({passes} успішних) · "
+                    "здано {solved} · відкрито {open} {open_form}").format(
+                        checks=digest.checks,
+                        checks_form=_plural(digest.checks, self.tr("перевірка"),
+                                            self.tr("перевірки"), self.tr("перевірок")),
+                        passes=digest.passes, solved=len(digest.solved),
+                        open=open_count,
+                        open_form=_plural(open_count, self.tr("помилка"),
+                                          self.tr("помилки"), self.tr("помилок")))
         )
 
     def _on_weak_clicked(self, item: QListWidgetItem) -> None:
