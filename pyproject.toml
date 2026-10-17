@@ -34,7 +34,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Education",
 ]
-dependencies = ["PySide6>=6.10"]
+dependencies = ["PySide6>=6.12.0"]
 
 [project.scripts]
 pytrainer = "trainer.app:main"
